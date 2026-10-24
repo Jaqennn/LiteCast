@@ -16,5 +16,6 @@ Based on jqssun/android-airplay-server `a46cca0` and the DLNA renderer of puppy-
   that pops up for a cast and closes itself afterwards; remote-friendly seeking that accelerates
   while held; Back twice disconnects mirroring
 - Always on: background receiver with sticky restart and start on boot; coexists with a
-  pre-installed casting app (dynamic AirPlay port, own DLNA port, SSDP announce-only fallback)
+  pre-installed casting app (dynamic AirPlay port, own DLNA port, SSDP announce-only fallback);
+  on TVs the wake lock is held only during a cast, so the set still sleeps in standby
 - Chinese and English interface
