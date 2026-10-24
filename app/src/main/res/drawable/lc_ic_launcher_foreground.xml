@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- LiteCast mark: a screen with cast waves in its open corner. Safe zone is the centre 66dp. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M33,46V40.5A5,5 0,0 1,38 35.5H71A5,5 0,0 1,76 40.5V67.5A5,5 0,0 1,71 72.5H54"
+        android:strokeWidth="5"
+        android:strokeColor="#FF5EE2B7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M33,63.5A9,9 0,0 1,42 72.5"
+        android:strokeWidth="5"
+        android:strokeColor="#FF5EE2B7"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M33,55.5A17,17 0,0 1,50 72.5"
+        android:strokeWidth="5"
+        android:strokeColor="#FF5EE2B7"
+        android:strokeLineCap="round" />
+    <path
+        android:fillColor="#FF5EE2B7"
+        android:pathData="M33.5,72.5m-3.5,0a3.5,3.5 0,1 1,7 0a3.5,3.5 0,1 1,-7 0" />
+</vector>

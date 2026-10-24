@@ -11,7 +11,9 @@ val localProps = Properties().apply {
     rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
 }
 
-val allAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+// LiteCast: TVs are ARM (many still run a 32-bit userland); -PwithX86 adds x86_64 for emulators
+val allAbis = listOf("arm64-v8a", "armeabi-v7a") +
+    if (providers.gradleProperty("withX86").isPresent) listOf("x86_64") else emptyList()
 
 android {
     namespace = "io.github.jqssun.airplay"
@@ -30,11 +32,12 @@ android {
     }
 
     defaultConfig {
-        applicationId = "io.github.jqssun.airplay"
+        // LiteCast: own application id so it installs next to upstream; namespace stays upstream's
+        applicationId = "io.github.litecast"
         minSdk = 23
         targetSdk = 37
-        versionCode = 36
-        versionName = "0.0.36"
+        versionCode = 1
+        versionName = "0.1.0"
 
         externalNativeBuild {
             cmake {
@@ -72,6 +75,10 @@ android {
                 cmake { arguments += "-DSANITIZE=ON" }
             }
         }
+    }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 
     dependenciesInfo {
@@ -121,6 +128,7 @@ dependencies {
     implementation(libs.androidx.media)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.ui.compose.material3)
     implementation(libs.media3.transformer)
     implementation(libs.kotlinx.coroutines)
@@ -137,4 +145,6 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
+
+    testImplementation(libs.junit)
 }

@@ -12,7 +12,11 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.VideoSize
+import androidx.media3.common.PlaybackException
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 
 // rate is 0 while buffering; speed is the configured rate regardless of pause state
 // native reads the effective rate, overlay reads playWhenReady + speed + skipSilence
@@ -25,6 +29,19 @@ data class PlaybackSnapshot(
     val speed: Float = 1f,
     val skipSilence: Boolean = false,
     val buffering: Boolean = false,
+    // LiteCast: extra state for the DLNA renderer
+    val live: Boolean = false,
+    val seekable: Boolean = false,
+    val playerReady: Boolean = false,
+)
+
+// LiteCast: options for URLs pushed by DLNA senders (AirPlay keeps the defaults)
+data class PlayOptions(
+    val mimeType: String? = null,
+    val userAgent: String? = null,
+    val title: String? = null,
+    val liveTargetOffsetMs: Long? = null,
+    val playWhenReady: Boolean = true,
 )
 
 // exoplayer calls stay on the main thread; native only reads the onPlaybackInfo snapshot
@@ -39,6 +56,8 @@ class AirPlayVideoPlayer(private val context: Context) {
     var onVideoSize: ((width: Int, height: Int, aspect: Float) -> Unit)? = null
     var onTitle: ((String?) -> Unit)? = null
     var onEnded: (() -> Unit)? = null
+    // LiteCast: return true when the error was handled (e.g. retried); otherwise onEnded runs
+    var onError: ((PlaybackException) -> Boolean)? = null
 
     private val _reportTick = object : Runnable {
         override fun run() {
@@ -50,6 +69,7 @@ class AirPlayVideoPlayer(private val context: Context) {
     private val _listener = object : Player.Listener {
         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
             Log.w(TAG, "playback error", error)
+            if (onError?.invoke(error) == true) return
             onEnded?.invoke()
         }
         override fun onPlaybackStateChanged(state: Int) {
@@ -69,19 +89,34 @@ class AirPlayVideoPlayer(private val context: Context) {
         }
     }
 
-    fun play(location: String, startPositionSeconds: Float) = mainHandler.post {
+    fun play(location: String, startPositionSeconds: Float, options: PlayOptions = PlayOptions()) = mainHandler.post {
         // recycling must not report the stopped sentinel: senders poll right after /play
         _stopInternal(reportStopped = false)
-        val p = ExoPlayer.Builder(context).build().also {
+        val builder = ExoPlayer.Builder(context)
+        options.userAgent?.let { ua ->
+            val http = DefaultHttpDataSource.Factory()
+                .setUserAgent(ua)
+                .setConnectTimeoutMs(12_000)
+                .setReadTimeoutMs(15_000)
+                .setAllowCrossProtocolRedirects(true)
+            builder.setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http)))
+        }
+        val p = builder.build().also {
             it.addListener(_listener)
             pendingSurface?.let { s -> it.setVideoSurface(s) }
             it.volume = clientGain
         }
         player = p
-        p.setMediaItem(MediaItem.fromUri(location), (startPositionSeconds * 1000).toLong())
-        p.playWhenReady = true
+        val item = MediaItem.Builder().setUri(location)
+        options.mimeType?.takeIf { it.isNotEmpty() }?.let { item.setMimeType(it) }
+        options.title?.takeIf { it.isNotEmpty() }?.let { item.setMediaMetadata(MediaMetadata.Builder().setTitle(it).build()) }
+        options.liveTargetOffsetMs?.let {
+            item.setLiveConfiguration(MediaItem.LiveConfiguration.Builder().setTargetOffsetMs(it).build())
+        }
+        p.setMediaItem(item.build(), (startPositionSeconds * 1000).toLong())
+        p.playWhenReady = options.playWhenReady
         p.prepare()
-        onPlaybackInfo?.invoke(PlaybackSnapshot(startPositionSeconds, 0f, 0f, false, true))
+        onPlaybackInfo?.invoke(PlaybackSnapshot(startPositionSeconds, 0f, 0f, false, options.playWhenReady))
         mainHandler.postDelayed(_reportTick, REPORT_INTERVAL_MS)
     }
 
@@ -182,6 +217,9 @@ class AirPlayVideoPlayer(private val context: Context) {
                 speed = p.playbackParameters.speed,
                 skipSilence = p.skipSilenceEnabled,
                 buffering = p.playbackState == Player.STATE_BUFFERING,
+                live = p.isCurrentMediaItemLive,
+                seekable = p.isCurrentMediaItemSeekable,
+                playerReady = p.playbackState == Player.STATE_READY,
             )
         )
     }

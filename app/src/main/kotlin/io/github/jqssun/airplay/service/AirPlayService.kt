@@ -32,7 +32,6 @@ import androidx.core.os.ConfigurationCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import androidx.media.app.NotificationCompat as MediaNotificationCompat
-import io.github.jqssun.airplay.MainActivity
 import io.github.jqssun.airplay.Prefs
 import io.github.jqssun.airplay.R
 import io.github.jqssun.airplay.changes
@@ -53,9 +52,17 @@ import io.github.jqssun.airplay.discovery.NsdServiceManager
 import io.github.jqssun.airplay.discovery.UsbMdnsAdvertiser
 import io.github.jqssun.airplay.download.VideoDownloader
 import io.github.jqssun.airplay.renderer.AirPlayVideoPlayer
+import io.github.jqssun.airplay.renderer.PlayOptions
 import io.github.jqssun.airplay.renderer.AudioRenderer
 import io.github.jqssun.airplay.renderer.VideoRenderer
 import io.github.jqssun.airplay.viewmodel.DebugInfo
+import io.github.litecast.LiteCast
+import io.github.litecast.dlna.AvTransport
+import io.github.litecast.dlna.DlnaRenderer
+import io.github.litecast.dlna.MediaProbe
+import androidx.media3.common.PlaybackException
+import androidx.media3.datasource.HttpDataSource
+import java.util.concurrent.Executors
 import java.net.NetworkInterface
 import java.security.SecureRandom
 import kotlin.math.abs
@@ -94,6 +101,27 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     // hls urls point at the native httpd, valid only while the session lives
     private val _videoLocation = MutableStateFlow<String?>(null)
     val videoLocation = _videoLocation.asStateFlow()
+
+    // LiteCast: the shared URL player serves both AirPlay video and DLNA
+    enum class VideoSource { AIRPLAY, DLNA }
+    private val _videoSource = MutableStateFlow(VideoSource.AIRPLAY)
+    val videoSource = _videoSource.asStateFlow()
+    private val _videoError = MutableStateFlow<String?>(null)
+    val videoError = _videoError.asStateFlow()
+    private val _dlnaStatus = MutableStateFlow(DlnaRenderer.Status.STOPPED)
+    val dlnaStatus = _dlnaStatus.asStateFlow()
+    private val _serverPort = MutableStateFlow(0)
+    val serverPort = _serverPort.asStateFlow()
+    private var dlnaRenderer: DlnaRenderer? = null
+    private var _dlnaUri = ""
+    private var _dlnaTitle = ""
+    private var _dlnaMime = ""
+    private var _dlnaRetries = 0
+    private var _dlnaProbed = false
+    private var _dlnaPlayingSince = 0L
+    private val _dlnaProbe = Executors.newSingleThreadExecutor()
+    private val _dlnaRetry = Runnable { _retryDlna() }
+    private val _dlnaFailEnd = Runnable { _endVideoPlayback("DLNA playback failed") }
 
     private val prefs: SharedPreferences by lazy {
         getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE)
@@ -311,10 +339,12 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         }
         airPlayVideoPlayer.onTitle = { _videoTitle.value = it ?: "" }
         airPlayVideoPlayer.onEnded = { _endVideoPlayback("AirPlay Video stopped (player)") }
+        airPlayVideoPlayer.onError = { error -> _onVideoError(error) }
         airPlayVideoPlayer.onPlaybackInfo = { snapshot ->
-            if (nativeHandle != 0L) {
+            if (nativeHandle != 0L && _videoSource.value == VideoSource.AIRPLAY) {
                 NativeBridge.nativeUpdatePlaybackInfo(nativeHandle, snapshot.position, snapshot.duration, snapshot.rate, snapshot.ready)
             }
+            if (_videoSource.value == VideoSource.DLNA && _videoPlaybackActive.value) _onDlnaSnapshot(snapshot)
             if (_videoPlaybackActive.value) {
                 _updateVideoPlaybackState(snapshot.position, snapshot.rate)
                 _videoPlaybackInfo.value = VideoPlaybackInfo(
@@ -348,15 +378,19 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_START_SERVER) {
+        super.onStartCommand(intent, flags, startId)
+        // LiteCast (after sony-airplay-tv): a TV receiver must come back after the system reclaims it
+        if (intent?.action == ACTION_START_SERVER ||
+            (intent == null && prefs.getBoolean(LiteCast.PREF_RECEIVER_ENABLED, true))) {
             promoteToForeground()
             _startServer(ensureServiceStarted = false)
             if (_serverState.value != ServerState.RUNNING) stopSelf(startId)
         }
-        return START_NOT_STICKY
+        return if (_serverState.value == ServerState.RUNNING) START_STICKY else START_NOT_STICKY
     }
 
     fun startServer() {
+        prefs.edit().putBoolean(LiteCast.PREF_RECEIVER_ENABLED, true).apply()
         _startServer(ensureServiceStarted = true)
     }
 
@@ -434,7 +468,12 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         NativeBridge.nativeSetDisplaySize(nativeHandle, w, h, maxFps)
 
         val requestedPort = prefs[Prefs.SERVER_PORT]
-        val port = NativeBridge.nativeStart(nativeHandle, requestedPort)
+        var port = NativeBridge.nativeStart(nativeHandle, requestedPort)
+        if (port < 0) {
+            // LiteCast: a pre-installed receiver (e.g. 乐播) may already hold the port
+            log("Port $requestedPort is busy, falling back to a free port")
+            port = NativeBridge.nativeStart(nativeHandle, 0)
+        }
         if (port < 0) {
             log("Failed to start on port $requestedPort")
             _failStart()
@@ -460,6 +499,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         }
 
         _serverState.value = ServerState.RUNNING
+        _serverPort.value = port
+        _startDlna(effectiveName)
         if (ensureServiceStarted) {
             ContextCompat.startForegroundService(this, Intent(this, AirPlayService::class.java))
         }
@@ -501,6 +542,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     private fun _failStart() {
+        _stopDlna()
         audioRenderer.detachEngine()
         if (nativeHandle != 0L) {
             NativeBridge.nativeDestroy(nativeHandle)
@@ -518,6 +560,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     fun stopServer() {
+        prefs.edit().putBoolean(LiteCast.PREF_RECEIVER_ENABLED, false).apply()
         _shutdown()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         foregroundStarted = false
@@ -532,6 +575,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     private fun _shutdown() {
+        _stopDlna()
+        _serverPort.value = 0
         audioRenderer.detachEngine()
         if (nativeHandle != 0L) {
             NativeBridge.nativeStop(nativeHandle)
@@ -618,13 +663,20 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         // lingering polls after a stop must not bounce the UI back to a pending session
         _videoPollSuppressed = true
         _videoPlaybackActive.value = false
+        // LiteCast: report STOPPED to the DLNA sender and hand the player back
+        if (_videoSource.value == VideoSource.DLNA) _releaseDlnaSession()
+        _videoSource.value = VideoSource.AIRPLAY
+        _videoError.value = null
+        _mainHandler.removeCallbacks(_dlnaFailEnd)
         airPlayVideoPlayer.stop()
         if (!_audioOnly.value) mediaSession?.isActive = false
         log(message)
     }
 
     override fun onDestroy() {
-        stopServer()
+        // LiteCast (as in sony-airplay-tv): a system-initiated destroy must not persist "receiver off"
+        _shutdown()
+        _dlnaProbe.shutdownNow()
         dacpPlayer.release()
         mediaReceiver?.let {
             try { unregisterReceiver(it) } catch (_: Exception) {}
@@ -652,6 +704,10 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onVideoPlay(location: String, startPositionSeconds: Float) {
+        // LiteCast: newest cast wins; a running DLNA video is told it was stopped
+        if (_videoSource.value == VideoSource.DLNA) _releaseDlnaSession()
+        _videoSource.value = VideoSource.AIRPLAY
+        _videoError.value = null
         _videoLocation.value = location
         _videoPlaySeq.value++
         _videoPollSuppressed = false
@@ -661,6 +717,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _videoTitle.value = ""
         _videoPlaybackActive.value = true
         airPlayVideoPlayer.play(location, startPositionSeconds)
+        launchVisualSession()
         // claim media-button routing for keys that arrive as media-session events
         mediaSession?.isActive = true
         log("AirPlay Video play: $location @ ${startPositionSeconds}s")
@@ -694,6 +751,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             _videoAspect.value = w / h
             _videoResolution.value = "${w.toInt()}x${h.toInt()}"
             videoRenderer.setResolution(w.toInt(), h.toInt())
+            if (!_mirroringActive.value) launchVisualSession()
             _mirroringActive.value = true
         }
         log("Video size: ${srcW}x${srcH} -> ${w}x${h}")
@@ -797,14 +855,15 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         val firstConnection = _connectionCount.value == 0
         _connectionCount.value++
         log("Sender connected (${_connectionCount.value})")
-        if (firstConnection && shouldLaunchOnConnect()) launchMainActivity()
+        // LiteCast: senders probe /info when the AirPlay list opens; only real sessions pop the UI
+        if (firstConnection) log("Sender probing")
     }
 
     override fun onConnectionDestroy() {
         _connectionCount.value = (_connectionCount.value - 1).coerceAtLeast(0)
         if (_connectionCount.value == 0) {
             // clients may drop without POST /stop; must run before the poll-state reset
-            _endVideoPlayback("AirPlay Video stopped (disconnect)")
+            if (_videoSource.value == VideoSource.AIRPLAY) _endVideoPlayback("AirPlay Video stopped (disconnect)")
             // last client gone: release audio output devices to save power
             audioRenderer.stop()
             _audioOnly.value = false
@@ -839,6 +898,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         if (_lastPin == pin) return
         _lastPin = pin
         pinCallback?.invoke(pin)
+        launchVisualSession()
         _updateMediaNotification()
     }
 
@@ -885,7 +945,14 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onMirrorRunning(running: Boolean) {
-        if (running) videoRenderer.startSession() else {
+        if (running) {
+            // LiteCast: newest cast wins over a DLNA video, and the player pops up
+            if (_videoSource.value == VideoSource.DLNA && _videoPlaybackActive.value) {
+                _mainHandler.post { _endVideoPlayback("DLNA stopped: mirroring started") }
+            }
+            videoRenderer.startSession()
+            launchVisualSession()
+        } else {
             videoRenderer.stopSession()
             _mirroringActive.value = false
         }
@@ -898,6 +965,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _refreshDacpPlayer()
         if (audioOnly && !prev) {
             mediaSession?.isActive = true
+            launchVisualSession()
             log("Audio mode")
         } else if (!audioOnly && prev) {
             mediaSession?.isActive = false
@@ -1023,6 +1091,211 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         connections = _connectionCount.value,
     )
 
+    // ---------------------------------------------------------------- LiteCast: DLNA + TV controls
+
+    /** Ends mirroring/audio sessions from the TV side (remote's Back key). */
+    fun disconnectClients() {
+        if (nativeHandle != 0L) NativeBridge.nativeDisconnectClients(nativeHandle)
+    }
+
+    fun dlnaAddress(): String = dlnaRenderer?.address.orEmpty()
+
+    fun setDlnaEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(LiteCast.PREF_DLNA_ENABLED, enabled).apply()
+        if (!enabled) {
+            if (_isDlnaActive()) _endVideoPlayback("DLNA turned off")
+            _stopDlna()
+        } else if (_serverState.value == ServerState.RUNNING) {
+            _startDlna(prefs[Prefs.SERVER_NAME])
+        }
+    }
+
+    private fun _startDlna(name: String) {
+        if (!prefs.getBoolean(LiteCast.PREF_DLNA_ENABLED, true) || dlnaRenderer != null) return
+        val renderer = DlnaRenderer(
+            context = applicationContext,
+            uuid = LiteCast.dlnaUuid(prefs),
+            friendlyName = { prefs[Prefs.SERVER_NAME].ifBlank { name } },
+            version = LiteCast.versionName(this),
+            host = _dlnaHost,
+            log = ::log,
+        )
+        renderer.onStatusChanged = { _dlnaStatus.value = it }
+        dlnaRenderer = renderer
+        renderer.start()
+    }
+
+    private fun _stopDlna() {
+        _mainHandler.removeCallbacks(_dlnaRetry)
+        dlnaRenderer?.release()
+        dlnaRenderer = null
+        _dlnaStatus.value = DlnaRenderer.Status.STOPPED
+    }
+
+    private fun _isDlnaActive() = _videoPlaybackActive.value && _videoSource.value == VideoSource.DLNA
+
+    private val _dlnaHost = object : AvTransport.Host {
+        override fun dlnaLoad(uri: String, title: String, mime: String, autoPlay: Boolean) {
+            _mainHandler.post { _startDlnaPlayback(uri, title, mime, autoPlay) }
+        }
+        override fun dlnaSetPlaying(playing: Boolean) {
+            _mainHandler.post { if (_isDlnaActive()) airPlayVideoPlayer.setPlaying(playing) }
+        }
+        override fun dlnaStop() {
+            _mainHandler.post { if (_isDlnaActive()) _endVideoPlayback("DLNA stopped by sender") }
+        }
+        override fun dlnaSeek(positionMs: Long) {
+            _mainHandler.post { if (_isDlnaActive()) airPlayVideoPlayer.scrub(positionMs / 1000f) }
+        }
+        override fun dlnaSetSpeed(speed: Float) {
+            _mainHandler.post { if (_isDlnaActive()) airPlayVideoPlayer.setSpeed(speed) }
+        }
+    }
+
+    private fun _dlnaOptions(playWhenReady: Boolean) = PlayOptions(
+        mimeType = _dlnaMime.ifEmpty { null },
+        userAgent = MediaProbe.USER_AGENT,
+        title = _dlnaTitle,
+        liveTargetOffsetMs = DLNA_LIVE_OFFSET_MS,
+        playWhenReady = playWhenReady,
+    )
+
+    private fun _startDlnaPlayback(uri: String, title: String, mime: String, autoPlay: Boolean) {
+        _mainHandler.removeCallbacks(_dlnaRetry)
+        _mainHandler.removeCallbacks(_dlnaFailEnd)
+        if (_mirroringActive.value) disconnectClients() // newest cast wins
+        _dlnaUri = uri
+        _dlnaTitle = title
+        _dlnaMime = mime
+        _dlnaRetries = 0
+        _dlnaProbed = false
+        _dlnaFailing = false
+        _dlnaPlayingSince = 0L
+        _videoSource.value = VideoSource.DLNA
+        _videoError.value = null
+        _videoLocation.value = null
+        _videoPlaySeq.value++
+        _videoPollSuppressed = true
+        _videoPlaybackInfo.value = VideoPlaybackInfo(playing = autoPlay)
+        _videoPlaybackAspect.value = 16f / 9f
+        _videoPlaybackSize.value = null
+        _videoTitle.value = title
+        _videoPlaybackActive.value = true
+        airPlayVideoPlayer.play(uri, 0f, _dlnaOptions(autoPlay))
+        launchVisualSession()
+        mediaSession?.isActive = true
+        log("DLNA play from ${android.net.Uri.parse(uri).host}")
+    }
+
+    private fun _onDlnaSnapshot(snapshot: io.github.jqssun.airplay.renderer.PlaybackSnapshot) {
+        val now = SystemClock.elapsedRealtime()
+        if (snapshot.playerReady && snapshot.playWhenReady) {
+            if (_dlnaPlayingSince == 0L) _dlnaPlayingSince = now
+            // a minute of healthy playback earns a fresh retry budget
+            if (now - _dlnaPlayingSince > 60_000) _dlnaRetries = 0
+            if (_videoError.value != null && !_dlnaFailing) _videoError.value = null
+        } else {
+            _dlnaPlayingSince = 0L
+        }
+        dlnaRenderer?.transport?.onSnapshot(
+            AvTransport.Snapshot(
+                positionMs = (snapshot.position * 1000).toLong(),
+                durationMs = (snapshot.duration * 1000).toLong(),
+                playWhenReady = snapshot.playWhenReady,
+                ready = snapshot.playerReady,
+                buffering = snapshot.buffering,
+                live = snapshot.live,
+                seekable = snapshot.seekable,
+                speed = snapshot.speed,
+            )
+        )
+    }
+
+    private var _dlnaFailing = false
+
+    private fun _releaseDlnaSession() {
+        _mainHandler.removeCallbacks(_dlnaRetry)
+        _dlnaFailing = false
+        dlnaRenderer?.transport?.onInactive()
+    }
+
+    private fun _onVideoError(error: PlaybackException): Boolean {
+        if (!_isDlnaActive()) return false
+        val status = _httpStatus(error)
+        when {
+            status in EXPIRED_STATUS -> _failDlna(getString(R.string.lc_error_link_expired))
+            !_dlnaProbed && error.errorCode in PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED..PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED -> _probeDlna()
+            error.errorCode in 2000..2999 -> _scheduleDlnaRetry()
+            error.errorCode in 4000..4999 -> _failDlna(getString(R.string.lc_error_decode))
+            else -> _failDlna(getString(R.string.lc_error_unplayable))
+        }
+        log("DLNA error ${error.errorCodeName}" + if (status > 0) " (HTTP $status)" else "")
+        return true
+    }
+
+    private fun _scheduleDlnaRetry() {
+        if (_dlnaRetries >= DLNA_RETRY_DELAYS_S.size) {
+            _failDlna(getString(R.string.lc_error_network))
+            return
+        }
+        val delay = DLNA_RETRY_DELAYS_S[_dlnaRetries++]
+        _videoError.value = getString(R.string.lc_error_retrying, delay)
+        _mainHandler.removeCallbacks(_dlnaRetry)
+        _mainHandler.postDelayed(_dlnaRetry, delay * 1000L)
+    }
+
+    private fun _retryDlna() {
+        if (!_isDlnaActive()) return
+        val info = _videoPlaybackInfo.value
+        val resumeAt = if (info.durationMs > 0) info.positionMs / 1000f else 0f
+        airPlayVideoPlayer.play(_dlnaUri, resumeAt, _dlnaOptions(playWhenReady = true))
+        log("DLNA retry $_dlnaRetries")
+    }
+
+    private fun _probeDlna() {
+        _dlnaProbed = true
+        _videoError.value = getString(R.string.lc_error_probing)
+        val uri = _dlnaUri
+        _dlnaProbe.execute {
+            val result = runCatching { MediaProbe.fetch(uri) }.getOrNull()
+            _mainHandler.post {
+                if (!_isDlnaActive() || uri != _dlnaUri) return@post
+                val format = result?.format()
+                when {
+                    result == null || format == null -> _failDlna(getString(R.string.lc_error_unplayable))
+                    result.status() in EXPIRED_STATUS -> _failDlna(getString(R.string.lc_error_link_expired))
+                    result.status() !in 200..299 -> _scheduleDlnaRetry()
+                    format.nonMedia() -> _failDlna(getString(R.string.lc_error_not_media))
+                    format.mime().isNotEmpty() && !format.mime().equals(_dlnaMime, ignoreCase = true) -> {
+                        _dlnaMime = format.mime()
+                        _videoError.value = null
+                        log("DLNA format corrected to ${format.kind()}")
+                        airPlayVideoPlayer.play(_dlnaUri, 0f, _dlnaOptions(playWhenReady = true))
+                    }
+                    else -> _failDlna(getString(R.string.lc_error_unplayable))
+                }
+            }
+        }
+    }
+
+    private fun _failDlna(message: String) {
+        _mainHandler.removeCallbacks(_dlnaRetry)
+        _dlnaFailing = true
+        _videoError.value = message
+        dlnaRenderer?.transport?.onError()
+        _mainHandler.removeCallbacks(_dlnaFailEnd)
+        _mainHandler.postDelayed(_dlnaFailEnd, DLNA_ERROR_LINGER_MS)
+    }
+
+    private fun _httpStatus(error: Throwable): Int {
+        var e: Throwable? = error
+        while (e != null) {
+            if (e is HttpDataSource.InvalidResponseCodeException) return e.responseCode
+            e = e.cause
+        }
+        return 0
+    }
+
     // helpers
 
     private fun getHwAddr(): ByteArray {
@@ -1106,7 +1379,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     private fun _buildMediaNotification(): Notification {
-        val intent = Intent(this, MainActivity::class.java)
+        val intent = LiteCast.homeIntent(this)
         val pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
         val info = _trackInfo.value
         val isAudio = _audioOnly.value && info.title.isNotEmpty()
@@ -1142,10 +1415,14 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         return builder.build()
     }
 
+    private fun launchVisualSession() {
+        if (shouldLaunchOnConnect()) launchMainActivity()
+    }
+
     private fun launchMainActivity() {
         Handler(Looper.getMainLooper()).post {
-            val launchIntent = Intent(this, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            // LiteCast: the full-screen TV player replaces the upstream activity
+            val launchIntent = LiteCast.playerIntent(this)
             try {
                 startActivity(launchIntent)
             } catch (e: Exception) {
@@ -1190,6 +1467,12 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         // shared with dpad/double-tap seeks
         const val VIDEO_SEEK_STEP_MS = 10_000L
         const val VIDEO_POLL_PENDING_TIMEOUT_MS = 3_000L
+
+        // LiteCast
+        private const val DLNA_LIVE_OFFSET_MS = 8_000L
+        private const val DLNA_ERROR_LINGER_MS = 5_000L
+        private val DLNA_RETRY_DELAYS_S = intArrayOf(2, 5, 10)
+        private val EXPIRED_STATUS = setOf(401, 403, 404, 410)
 
         private const val AUDIO_CONFIG_DEBOUNCE_MS = 500L
         private const val SERVER_RESTART_DEBOUNCE_MS = 500L

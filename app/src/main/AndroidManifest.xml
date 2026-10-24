@@ -26,25 +26,46 @@
         android:name=".AirPlayApp"
         android:allowBackup="false"
         android:usesCleartextTraffic="true"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
-        android:banner="@drawable/banner"
-        android:label="@string/app_name"
+        android:icon="@mipmap/lc_ic_launcher"
+        android:roundIcon="@mipmap/lc_ic_launcher"
+        android:banner="@drawable/lc_banner"
+        android:label="@string/lc_app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.AirPlayServer">
 
+        <!-- LiteCast: TV home screen is the launcher entry -->
         <activity
-            android:name=".MainActivity"
+            android:name="io.github.litecast.tv.HomeActivity"
             android:exported="true"
-            android:supportsPictureInPicture="true"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
-            android:launchMode="singleTop">
+            android:theme="@style/Theme.LiteCast"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|navigation|keyboard">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- LiteCast: full-screen player in its own task, so closing it returns to whatever was on screen -->
+        <activity
+            android:name="io.github.litecast.tv.PlayerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.LiteCast.Player"
+            android:launchMode="singleTask"
+            android:taskAffinity="io.github.litecast.player"
+            android:excludeFromRecents="true"
+            android:noHistory="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|navigation|keyboard" />
+
+        <!-- Upstream receiver UI, kept as the "Advanced" settings screen -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:label="@string/lc_setting_advanced"
+            android:supportsPictureInPicture="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:launchMode="singleTop" />
 
         <service
             android:name=".service.AirPlayService"
@@ -57,6 +78,7 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>

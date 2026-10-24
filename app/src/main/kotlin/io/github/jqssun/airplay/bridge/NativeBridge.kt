@@ -19,6 +19,8 @@ object NativeBridge {
 
     external fun nativeStart(handle: Long, port: Int): Int
     external fun nativeStop(handle: Long)
+    // LiteCast: drop all sender connections (ends mirroring from the TV side)
+    external fun nativeDisconnectClients(handle: Long)
     external fun nativeDestroy(handle: Long)
 
     external fun nativeSetDisplaySize(handle: Long, w: Int, h: Int, fps: Int)

@@ -124,7 +124,9 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeStart(
     server_ctx_t *ctx = (server_ctx_t *)(intptr_t)handle;
     if (!ctx || !ctx->raop) return -1;
 
-    unsigned short port = (unsigned short)(requestedPort > 0 ? requestedPort : 7000);
+    /* LiteCast: 0 asks the OS for a free port (used when a pre-installed receiver
+       already holds the preferred one); only negative values mean "default" */
+    unsigned short port = (unsigned short)(requestedPort >= 0 ? requestedPort : 7000);
     int ret = raop_start_httpd(ctx->raop, &port);
     if (ret < 0) {
         LOGE("raop_start_httpd failed: %d", ret);
@@ -143,6 +145,17 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeStart(
     }
 
     return (jint)port;
+}
+
+/* LiteCast: drop every known sender connection (used to end mirroring from the TV) */
+extern "C"
+JNIEXPORT void JNICALL
+Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeDisconnectClients(
+        JNIEnv *env, jobject thiz, jlong handle) {
+
+    server_ctx_t *ctx = (server_ctx_t *)(intptr_t)handle;
+    if (!ctx || !ctx->raop) return;
+    raop_remove_known_connections(ctx->raop);
 }
 
 extern "C"

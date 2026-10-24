@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="lc_app_name">轻投</string>
+    <string name="lc_tagline">免费、无广告的电视投屏</string>
+    <string name="lc_device_label">在手机上选择这个名字</string>
+    <string name="lc_back_to_cast">回到投屏</string>
+    <string name="lc_action_rename">改名</string>
+    <string name="lc_action_settings">设置</string>
+
+    <string name="lc_status_airplay_ready">AirPlay 已就绪</string>
+    <string name="lc_status_airplay_off">AirPlay 未开启</string>
+    <string name="lc_status_airplay_error">AirPlay 启动失败</string>
+    <string name="lc_status_dlna_ready">DLNA 已就绪</string>
+    <string name="lc_status_dlna_starting">DLNA 启动中…</string>
+    <string name="lc_status_dlna_off">DLNA 未开启</string>
+    <string name="lc_status_dlna_error">DLNA 没有网络</string>
+    <string name="lc_status_ip">IP %1$s</string>
+
+    <string name="lc_card_apple_title">iPhone · iPad · Mac</string>
+    <string name="lc_card_apple_body">控制中心 → 屏幕镜像 → 选择上面的名字。相册和 Safari 里的视频也可以点 AirPlay 按钮。</string>
+    <string name="lc_card_apps_title">手机上的视频 App</string>
+    <string name="lc_card_apps_body">播放视频时点 TV / 投屏 图标 → 选择上面的名字。安卓和 iPhone 都可以。</string>
+
+    <string name="lc_receiver_paused">接收已暂停</string>
+    <string name="lc_receiver_paused_body">重新开始之前，手机找不到这台电视。</string>
+    <string name="lc_receiver_start">开始接收</string>
+    <string name="lc_overlay_title">让投屏自动弹出画面</string>
+    <string name="lc_overlay_body">在系统设置里为「轻投」开启「显示在其他应用上层」，看别的节目时手机一投屏，画面就会直接弹出来。</string>
+    <string name="lc_overlay_button">去开启</string>
+    <string name="lc_overlay_adb">找不到这个设置？用电脑执行：adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
+
+    <string name="lc_rename_title">手机上显示的名字</string>
+    <string name="lc_rename_body">AirPlay 和 DLNA 共用这个名字。保存后接收会重启一下。</string>
+    <string name="lc_save">保存</string>
+    <string name="lc_cancel">取消</string>
+    <string name="lc_ok">好</string>
+    <string name="lc_on">开</string>
+    <string name="lc_off">关</string>
+
+    <string name="lc_settings_title">设置</string>
+    <string name="lc_setting_receiver">接收投屏</string>
+    <string name="lc_setting_receiver_desc">在后台安静运行，手机随时能找到这台电视</string>
+    <string name="lc_setting_dlna">DLNA（视频 App 投屏）</string>
+    <string name="lc_setting_dlna_desc">让视频 App 里的 TV / 投屏 按钮找到这台电视</string>
+    <string name="lc_setting_boot">开机自动启动</string>
+    <string name="lc_setting_boot_desc">电视重启后不用打开应用也能投屏</string>
+    <string name="lc_setting_popup">投屏时自动弹出画面</string>
+    <string name="lc_setting_popup_on">已允许</string>
+    <string name="lc_setting_popup_off">还没有允许，点击打开系统设置</string>
+    <string name="lc_setting_pin">AirPlay 需要配对码</string>
+    <string name="lc_setting_pin_desc">新设备连接时需输入电视上显示的配对码</string>
+    <string name="lc_setting_advanced">高级设置</string>
+    <string name="lc_setting_advanced_desc">解码器、分辨率、音频延迟、日志</string>
+    <string name="lc_setting_about">关于</string>
+    <string name="lc_about_body">版本 %1$s · GPL-3.0\n\nAirPlay 部分：jqssun/android-airplay-server 与 UxPlay。\nDLNA 部分：移植自 小狗便利店投屏（puppy-store-cast）。\n电视端体验参考了 sony-airplay-tv 与 SonyCast-AndroidTV。\n\n没有账号、没有广告、没有时长限制，所有数据只在你家的局域网里。</string>
+
+    <string name="lc_player_preparing">正在准备视频…</string>
+    <string name="lc_player_live">直播</string>
+    <string name="lc_player_hint">← → 快退 / 快进（按住加速）　OK 暂停　返回 退出</string>
+    <string name="lc_player_mirroring">屏幕镜像中</string>
+    <string name="lc_player_back_again">再按一次返回键断开投屏</string>
+    <string name="lc_player_music">正在通过 AirPlay 播放</string>
+    <string name="lc_player_music_hint">OK 播放 / 暂停　← → 上一首 / 下一首　连按两次返回 断开</string>
+    <string name="lc_player_pin">在你的设备上输入这个配对码</string>
+
+    <string name="lc_error_link_expired">链接已失效或被拒绝，请在手机上重新投屏。</string>
+    <string name="lc_error_decode">这台电视无法解码这个视频。</string>
+    <string name="lc_error_unplayable">这个视频无法在这里播放。</string>
+    <string name="lc_error_network">网络连接中断了。</string>
+    <string name="lc_error_retrying">连接中断，%1$d 秒后重试…</string>
+    <string name="lc_error_probing">正在识别视频格式…</string>
+    <string name="lc_error_not_media">手机发来的是网页，不是视频。</string>
+</resources>

@@ -1,0 +1,378 @@
+/*
+ * Copyright (C) 2026 LiteCast contributors
+ * SPDX-License-Identifier: GPL-3.0-only
+ */
+
+package io.github.litecast.tv
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import android.provider.Settings
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Cast
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.OndemandVideo
+import androidx.compose.material.icons.rounded.PhoneIphone
+import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
+import io.github.jqssun.airplay.MainActivity
+import io.github.jqssun.airplay.Prefs
+import io.github.jqssun.airplay.R
+import io.github.jqssun.airplay.get
+import io.github.jqssun.airplay.observe
+import io.github.jqssun.airplay.service.AirPlayService
+import io.github.litecast.LiteCast
+import io.github.litecast.dlna.DlnaRenderer
+import java.net.Inet4Address
+import kotlinx.coroutines.delay
+
+/** Launcher entry: one calm screen that says what to do on the phone, plus a short settings list. */
+class HomeActivity : ComponentActivity() {
+    private val binding = ServiceBinding(this)
+    private val screen = mutableStateOf(Screen.HOME)
+
+    private enum class Screen { HOME, SETTINGS }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding.onConnected = { svc -> ensureRunning(svc) }
+        setContent {
+            LiteCastTheme {
+                val svc = binding.service.value
+                when (screen.value) {
+                    Screen.HOME -> HomeScreen(svc, onSettings = { screen.value = Screen.SETTINGS })
+                    Screen.SETTINGS -> {
+                        BackHandler { screen.value = Screen.HOME }
+                        SettingsScreen(svc)
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        binding.bind()
+        binding.service.value?.let(::ensureRunning)
+    }
+
+    override fun onStop() {
+        binding.unbind()
+        super.onStop()
+    }
+
+    private fun ensureRunning(svc: AirPlayService) {
+        val prefs = getSharedPreferences(Prefs.NAME, MODE_PRIVATE)
+        if (prefs.getBoolean(LiteCast.PREF_RECEIVER_ENABLED, true) && svc.serverState.value != AirPlayService.ServerState.RUNNING) {
+            ServiceBinding.startReceiver(this)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------- home
+
+@Composable
+private fun HomeScreen(svc: AirPlayService?, onSettings: () -> Unit) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE) }
+    val name by remember { prefs.observe { this[Prefs.SERVER_NAME] } }.collectAsState(prefs[Prefs.SERVER_NAME])
+    val serverState = svc?.serverState.collectOr(AirPlayService.ServerState.STOPPED)
+    val dlnaStatus = svc?.dlnaStatus.collectOr(DlnaRenderer.Status.STOPPED)
+    val dlnaEnabled by remember { prefs.observe { getBoolean(LiteCast.PREF_DLNA_ENABLED, true) } }.collectAsState(true)
+    val mirroring = svc?.mirroringActive.collectOr(false)
+    val video = svc?.videoPlaybackActive.collectOr(false)
+    val music = svc?.audioOnly.collectOr(false)
+    val sessionActive = mirroring || video || music
+    val ip by produceState("", svc) {
+        while (true) {
+            value = svc?.dlnaAddress()?.ifEmpty { null } ?: lanIp(context)
+            delay(2000)
+        }
+    }
+    val canPopUp by produceState(canDrawOverlays(context)) {
+        while (true) { value = canDrawOverlays(context); delay(1000) }
+    }
+    var renaming by remember { mutableStateOf(false) }
+    val firstFocus = remember { FocusRequester() }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Tv.BackgroundTop, Tv.Background)))
+    ) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 56.dp, vertical = 40.dp)) {
+            // header
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(Tv.AccentSoft), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.Cast, contentDescription = null, tint = Tv.Accent, modifier = Modifier.size(20.dp))
+                }
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(R.string.lc_app_name), style = Tv.Label.copy(fontSize = Tv.Body.fontSize))
+                Spacer(Modifier.width(10.dp))
+                Text(stringResource(R.string.lc_tagline), style = Tv.Caption)
+                Spacer(Modifier.weight(1f))
+                if (sessionActive) {
+                    PillButton(stringResource(R.string.lc_back_to_cast), Icons.Rounded.PlayCircle, emphasized = true) {
+                        context.startActivity(LiteCast.playerIntent(context))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                }
+                PillButton(stringResource(R.string.lc_action_rename), Icons.Rounded.Edit, modifier = Modifier.focusRequester(firstFocus)) { renaming = true }
+                Spacer(Modifier.width(12.dp))
+                PillButton(stringResource(R.string.lc_action_settings), Icons.Rounded.Settings, onClick = onSettings)
+            }
+
+            Spacer(Modifier.height(32.dp))
+            Text(stringResource(R.string.lc_device_label), style = Tv.Caption)
+            Spacer(Modifier.height(6.dp))
+            Text(name, style = Tv.Display, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(14.dp))
+
+            // status
+            Row(horizontalArrangement = Arrangement.spacedBy(28.dp), verticalAlignment = Alignment.CenterVertically) {
+                when (serverState) {
+                    AirPlayService.ServerState.RUNNING -> StatusChip(stringResource(R.string.lc_status_airplay_ready), Tv.Accent)
+                    AirPlayService.ServerState.ERROR -> StatusChip(stringResource(R.string.lc_status_airplay_error), Tv.Error)
+                    AirPlayService.ServerState.STOPPED -> StatusChip(stringResource(R.string.lc_status_airplay_off), Tv.TextTertiary)
+                }
+                when {
+                    !dlnaEnabled || serverState != AirPlayService.ServerState.RUNNING ->
+                        StatusChip(stringResource(R.string.lc_status_dlna_off), Tv.TextTertiary)
+                    dlnaStatus == DlnaRenderer.Status.READY -> StatusChip(stringResource(R.string.lc_status_dlna_ready), Tv.Accent)
+                    dlnaStatus == DlnaRenderer.Status.ERROR -> StatusChip(stringResource(R.string.lc_status_dlna_error), Tv.Error)
+                    else -> StatusChip(stringResource(R.string.lc_status_dlna_starting), Tv.TextTertiary)
+                }
+                if (ip.isNotEmpty()) Text(stringResource(R.string.lc_status_ip, ip), style = Tv.Body.copy(color = Tv.TextTertiary))
+            }
+
+            Spacer(Modifier.height(30.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.fillMaxWidth()) {
+                InfoCard(Icons.Rounded.PhoneIphone, stringResource(R.string.lc_card_apple_title), stringResource(R.string.lc_card_apple_body), Modifier.weight(1f))
+                InfoCard(Icons.Rounded.OndemandVideo, stringResource(R.string.lc_card_apps_title), stringResource(R.string.lc_card_apps_body), Modifier.weight(1f))
+            }
+
+            if (serverState == AirPlayService.ServerState.STOPPED && svc != null) {
+                Spacer(Modifier.height(20.dp))
+                Notice(
+                    title = stringResource(R.string.lc_receiver_paused),
+                    body = stringResource(R.string.lc_receiver_paused_body),
+                    action = stringResource(R.string.lc_receiver_start),
+                ) { svc.startServer() }
+            } else if (!canPopUp) {
+                Spacer(Modifier.height(20.dp))
+                Notice(
+                    title = stringResource(R.string.lc_overlay_title),
+                    body = stringResource(R.string.lc_overlay_body),
+                    action = stringResource(R.string.lc_overlay_button),
+                    footnote = stringResource(R.string.lc_overlay_adb, context.packageName),
+                ) { openOverlaySettings(context) }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
+
+    if (renaming) {
+        RenameDialog(
+            initial = name,
+            onDismiss = { renaming = false },
+            onSave = { value ->
+                prefs.edit { putString(Prefs.SERVER_NAME.key, value) }
+                renaming = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun Notice(title: String, body: String, action: String, footnote: String? = null, onAction: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(Tv.WarningSoft)
+            .border(1.dp, Tv.Warning.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
+            .padding(horizontal = 22.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.WarningAmber, contentDescription = null, tint = Tv.Warning, modifier = Modifier.size(26.dp))
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = Tv.Label.copy(fontSize = Tv.Body.fontSize))
+            Spacer(Modifier.height(2.dp))
+            Text(body, style = Tv.Caption.copy(color = Tv.TextSecondary))
+            if (footnote != null) {
+                Spacer(Modifier.height(4.dp))
+                Text(footnote, style = Tv.Caption.copy(fontSize = Tv.Caption.fontSize * 0.85f))
+            }
+        }
+        Spacer(Modifier.width(16.dp))
+        PillButton(action, emphasized = true, onClick = onAction)
+    }
+}
+
+@Composable
+private fun RenameDialog(initial: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    val focus = remember { FocusRequester() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Tv.SurfaceRaised,
+        title = { Text(stringResource(R.string.lc_rename_title), style = Tv.Title) },
+        text = {
+            Column {
+                Text(stringResource(R.string.lc_rename_body), style = Tv.Caption)
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it.take(48) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { text.trim().takeIf { it.isNotEmpty() }?.let(onSave) }) { Text(stringResource(R.string.lc_save)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.lc_cancel)) } },
+    )
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+}
+
+// ---------------------------------------------------------------------------------------- settings
+
+@Composable
+private fun SettingsScreen(svc: AirPlayService?) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE) }
+    val serverState = svc?.serverState.collectOr(AirPlayService.ServerState.STOPPED)
+    val boot by remember { prefs.observe { this[Prefs.BOOT_AUTO_START] } }.collectAsState(prefs[Prefs.BOOT_AUTO_START])
+    val dlna by remember { prefs.observe { getBoolean(LiteCast.PREF_DLNA_ENABLED, true) } }.collectAsState(true)
+    val pin by remember { prefs.observe { this[Prefs.REQUIRE_PIN] } }.collectAsState(prefs[Prefs.REQUIRE_PIN])
+    val canPopUp by produceState(canDrawOverlays(context)) {
+        while (true) { value = canDrawOverlays(context); delay(1000) }
+    }
+    var about by remember { mutableStateOf(false) }
+    val first = remember { FocusRequester() }
+    val on = stringResource(R.string.lc_on)
+    val off = stringResource(R.string.lc_off)
+
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Tv.BackgroundTop, Tv.Background)))) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 56.dp, vertical = 40.dp)
+        ) {
+            Text(stringResource(R.string.lc_settings_title), style = Tv.Title)
+            Spacer(Modifier.height(20.dp))
+            Column(Modifier.widthIn(max = 760.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                val running = serverState == AirPlayService.ServerState.RUNNING
+                SettingRow(stringResource(R.string.lc_setting_receiver), stringResource(R.string.lc_setting_receiver_desc),
+                    if (running) on else off, running, Modifier.focusRequester(first)) {
+                    if (running) svc?.stopServer() else svc?.startServer()
+                }
+                SettingRow(stringResource(R.string.lc_setting_dlna), stringResource(R.string.lc_setting_dlna_desc), if (dlna) on else off, dlna) {
+                    svc?.setDlnaEnabled(!dlna) ?: prefs.edit { putBoolean(LiteCast.PREF_DLNA_ENABLED, !dlna) }
+                }
+                SettingRow(stringResource(R.string.lc_setting_boot), stringResource(R.string.lc_setting_boot_desc), if (boot) on else off, boot) {
+                    prefs.edit { putBoolean(Prefs.BOOT_AUTO_START.key, !boot) }
+                }
+                SettingRow(stringResource(R.string.lc_setting_popup),
+                    stringResource(if (canPopUp) R.string.lc_setting_popup_on else R.string.lc_setting_popup_off),
+                    if (canPopUp) on else off, canPopUp) { openOverlaySettings(context) }
+                SettingRow(stringResource(R.string.lc_setting_pin), stringResource(R.string.lc_setting_pin_desc), if (pin) on else off, pin) {
+                    prefs.edit { putBoolean(Prefs.REQUIRE_PIN.key, !pin) }
+                }
+                SettingRow(stringResource(R.string.lc_setting_advanced), stringResource(R.string.lc_setting_advanced_desc), null) {
+                    context.startActivity(Intent(context, MainActivity::class.java))
+                }
+                SettingRow(stringResource(R.string.lc_setting_about), LiteCast.versionName(context), null) { about = true }
+            }
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+
+    if (about) {
+        AlertDialog(
+            onDismissRequest = { about = false },
+            containerColor = Tv.SurfaceRaised,
+            title = { Text(stringResource(R.string.lc_app_name), style = Tv.Title) },
+            text = { Text(stringResource(R.string.lc_about_body, LiteCast.versionName(context)), style = Tv.Body) },
+            confirmButton = { TextButton(onClick = { about = false }) { Text(stringResource(R.string.lc_ok)) } },
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------------------- helpers
+
+internal fun canDrawOverlays(context: Context): Boolean = Settings.canDrawOverlays(context)
+
+internal fun openOverlaySettings(context: Context) {
+    val pkg = Uri.parse("package:${context.packageName}")
+    val candidates = listOf(
+        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, pkg),
+        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION),
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
+        Intent(Settings.ACTION_SETTINGS),
+    )
+    for (intent in candidates) {
+        if (runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess) return
+    }
+}
+
+private fun lanIp(context: Context): String {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+    val network = cm.activeNetwork ?: return ""
+    return cm.getLinkProperties(network)?.linkAddresses
+        ?.map { it.address }
+        ?.firstOrNull { it is Inet4Address && !it.isLoopbackAddress && !it.isLinkLocalAddress }
+        ?.hostAddress.orEmpty()
+}

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- LiteCast front-end strings (English). Chinese lives in values-zh-rCN. -->
+<resources>
+    <string name="lc_app_name">LiteCast</string>
+    <string name="lc_tagline">Free, ad-free casting for this TV</string>
+    <string name="lc_device_label">Pick this name on your phone</string>
+    <string name="lc_back_to_cast">Back to cast</string>
+    <string name="lc_action_rename">Rename</string>
+    <string name="lc_action_settings">Settings</string>
+
+    <string name="lc_status_airplay_ready">AirPlay ready</string>
+    <string name="lc_status_airplay_off">AirPlay off</string>
+    <string name="lc_status_airplay_error">AirPlay failed to start</string>
+    <string name="lc_status_dlna_ready">DLNA ready</string>
+    <string name="lc_status_dlna_starting">DLNA starting…</string>
+    <string name="lc_status_dlna_off">DLNA off</string>
+    <string name="lc_status_dlna_error">DLNA: no network</string>
+    <string name="lc_status_ip">IP %1$s</string>
+
+    <string name="lc_card_apple_title">iPhone · iPad · Mac</string>
+    <string name="lc_card_apple_body">Control Center → Screen Mirroring → pick the name above. Photos and Safari videos also have an AirPlay button.</string>
+    <string name="lc_card_apps_title">Video apps</string>
+    <string name="lc_card_apps_body">While a video plays, tap the TV / Cast icon → pick the name above. Works on Android and iPhone.</string>
+
+    <string name="lc_receiver_paused">Receiving is paused</string>
+    <string name="lc_receiver_paused_body">Phones cannot find this TV until it is started again.</string>
+    <string name="lc_receiver_start">Start</string>
+    <string name="lc_overlay_title">Let casts pop up automatically</string>
+    <string name="lc_overlay_body">Allow “Display over other apps” for LiteCast, so a cast opens on screen even while you watch something else.</string>
+    <string name="lc_overlay_button">Allow</string>
+    <string name="lc_overlay_adb">No such setting? From a computer: adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
+
+    <string name="lc_rename_title">Name shown on phones</string>
+    <string name="lc_rename_body">Used for both AirPlay and DLNA. Receiving restarts briefly after saving.</string>
+    <string name="lc_save">Save</string>
+    <string name="lc_cancel">Cancel</string>
+    <string name="lc_ok">OK</string>
+    <string name="lc_on">On</string>
+    <string name="lc_off">Off</string>
+
+    <string name="lc_settings_title">Settings</string>
+    <string name="lc_setting_receiver">Receive casts</string>
+    <string name="lc_setting_receiver_desc">Runs quietly in the background so phones can always find this TV</string>
+    <string name="lc_setting_dlna">DLNA (video apps)</string>
+    <string name="lc_setting_dlna_desc">Lets the TV / Cast button inside video apps find this TV</string>
+    <string name="lc_setting_boot">Start with the TV</string>
+    <string name="lc_setting_boot_desc">Be ready after a restart without opening the app</string>
+    <string name="lc_setting_popup">Pop up when a cast starts</string>
+    <string name="lc_setting_popup_on">Allowed</string>
+    <string name="lc_setting_popup_off">Not allowed yet — opens the system setting</string>
+    <string name="lc_setting_pin">Ask for a PIN (AirPlay)</string>
+    <string name="lc_setting_pin_desc">New devices must enter a code shown on the TV</string>
+    <string name="lc_setting_advanced">Advanced</string>
+    <string name="lc_setting_advanced_desc">Decoder, resolution, audio latency, logs</string>
+    <string name="lc_setting_about">About</string>
+    <string name="lc_about_body">Version %1$s · GPL-3.0\n\nAirPlay: jqssun/android-airplay-server and UxPlay.\nDLNA: ported from 小狗便利店投屏 (puppy-store-cast).\nTV behaviour inspired by sony-airplay-tv and SonyCast-AndroidTV.\n\nNo accounts, no ads, no time limits. Everything stays on your home network.</string>
+
+    <string name="lc_player_preparing">Preparing video…</string>
+    <string name="lc_player_live">LIVE</string>
+    <string name="lc_player_hint">← → seek (hold to speed up)   OK pause   Back exit</string>
+    <string name="lc_player_mirroring">Screen mirroring</string>
+    <string name="lc_player_back_again">Press Back again to disconnect</string>
+    <string name="lc_player_music">Playing via AirPlay</string>
+    <string name="lc_player_music_hint">OK play / pause   ← → previous / next   Back twice to disconnect</string>
+    <string name="lc_player_pin">Enter this code on your device</string>
+
+    <string name="lc_error_link_expired">The link has expired or was refused. Cast again from your phone.</string>
+    <string name="lc_error_decode">This TV cannot decode this video.</string>
+    <string name="lc_error_unplayable">This video cannot be played here.</string>
+    <string name="lc_error_network">The network connection was lost.</string>
+    <string name="lc_error_retrying">Connection interrupted, retrying in %1$d s…</string>
+    <string name="lc_error_probing">Checking the stream format…</string>
+    <string name="lc_error_not_media">The phone sent a web page instead of a video.</string>
+</resources>
