@@ -1,0 +1,1 @@
+First release: AirPlay mirroring, video and music; DLNA renderer; TV home screen and player.

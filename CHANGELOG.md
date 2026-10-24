@@ -1,0 +1,20 @@
+# Changelog
+
+## 0.1.0 — first release
+
+Based on jqssun/android-airplay-server `a46cca0` and the DLNA renderer of puppy-store-cast.
+
+- AirPlay (from upstream): screen mirroring (H.264 / H.265), AirPlay video, AirPlay music with
+  cover art, optional PIN
+- DLNA renderer: works with the TV / cast button of video apps; accepts requests with missing or
+  unquoted SOAPAction, any service version, missing optional arguments and chunked bodies;
+  preloads on SetAVTransportURI and starts by itself if the app never sends Play; ignores the
+  stray "seek to 0" some apps send right after starting; recognises HLS served with the wrong
+  type; retries network errors (2 / 5 / 10 s) and reports expired links clearly
+- One player for AirPlay video and DLNA; the newest cast wins
+- TV front end: home screen with the name to pick on the phone, settings, a full-screen player
+  that pops up for a cast and closes itself afterwards; remote-friendly seeking that accelerates
+  while held; Back twice disconnects mirroring
+- Always on: background receiver with sticky restart and start on boot; coexists with a
+  pre-installed casting app (dynamic AirPlay port, own DLNA port, SSDP announce-only fallback)
+- Chinese and English interface

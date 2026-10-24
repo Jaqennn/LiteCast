@@ -3,7 +3,7 @@
  * Copyright (C) 2026 LiteCast contributors
  * SPDX-License-Identifier: GPL-3.0-only
  *
- * Ported from puppy-store-cast (小狗便利店投屏) — core/MediaProbe.java. Logic unchanged.
+ * Ported from puppy-store-cast (小狗便利店投屏) — core/MediaProbe.java. Changes: user agent only.
  */
 
 package io.github.litecast.dlna;

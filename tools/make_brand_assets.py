@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Renders LiteCast's raster brand assets (legacy launcher icons + Android TV banner).
+"""Renders LiteCast's raster brand assets (legacy launcher icons, Android TV banner, store images).
 
 The adaptive icon itself is a vector (res/drawable/lc_ic_launcher_*.xml); this script draws the
 same mark with Pillow for the places Android still wants bitmaps. Needs Pillow and a Noto Sans CJK
@@ -10,7 +10,9 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-RES = pathlib.Path(__file__).resolve().parent.parent / "app/src/main/res"
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+RES = ROOT / "app/src/main/res"
+STORE = ROOT / "fastlane/metadata/android/en-US/images"
 ACCENT = (94, 226, 183, 255)
 BG_TOP = (28, 38, 48)
 BG_BOTTOM = (11, 13, 16)
@@ -45,8 +47,11 @@ def draw_mark(draw, ox, oy, s, color):
         cap(x2, y2)
 
     def arc(cx, cy, r, start, end):
-        x0, y0 = p(cx - r, cy - r)
-        x1, y1 = p(cx + r, cy + r)
+        # Pillow strokes an arc inwards from its bounding box; grow the box so the stroke is
+        # centred on r like the vector drawable (and meets the round caps exactly)
+        ro = r + 2.5
+        x0, y0 = p(cx - ro, cy - ro)
+        x1, y1 = p(cx + ro, cy + ro)
         draw.arc([x0, y0, x1, y1], start, end, fill=color, width=round(w))
 
     # frame: left stub, top, right, bottom stub, with rounded corners (r = 5)
@@ -133,7 +138,12 @@ def main():
         out = RES / f"drawable-{qualifier}" / "lc_banner.png"
         out.parent.mkdir(parents=True, exist_ok=True)
         banner(w, h).convert("RGB").save(out, optimize=True)
-    print("assets written under", RES)
+    # store listing (fastlane / F-Droid layout)
+    STORE.mkdir(parents=True, exist_ok=True)
+    legacy_icon(512).save(STORE / "icon.png", optimize=True)
+    banner(1280, 720).convert("RGB").save(STORE / "tvBanner.png", optimize=True)
+    banner(1024, 500).convert("RGB").save(STORE / "featureGraphic.png", optimize=True)
+    print("assets written under", RES, "and", STORE)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,18 @@
+轻投把安卓电视变成投屏接收端：不用账号，没有广告，不限时长。
+
+<b>可以从这些地方投</b>
+<ul>
+<li>iPhone、iPad、Mac：屏幕镜像、AirPlay 视频、AirPlay 音乐</li>
+<li>安卓和 iPhone 上视频 App 的 TV / 投屏 按钮（DLNA）</li>
+</ul>
+
+<b>为遥控器设计</b>
+<ul>
+<li>在后台安静待命，电视开机自动启动</li>
+<li>手机一投屏就弹出画面，投完自己关掉</li>
+<li>左右键快进快退（按住加速），OK 暂停，连按两次返回断开镜像</li>
+</ul>
+
+AirPlay 部分基于 jqssun/android-airplay-server 和 UxPlay，DLNA 部分来自 小狗便利店投屏。不支持 DRM 版权保护内容和私有投屏协议。
+
+AirPlay 是 Apple Inc. 的商标，轻投与 Apple 无关。
