@@ -57,12 +57,19 @@
 
     <string name="lc_player_preparing">Preparing video…</string>
     <string name="lc_player_live">LIVE</string>
-    <string name="lc_player_hint">← → seek (hold to speed up)   OK pause   Back exit</string>
     <string name="lc_player_mirroring">Screen mirroring</string>
     <string name="lc_player_back_again">Press Back again to disconnect</string>
     <string name="lc_player_music">Playing via AirPlay</string>
-    <string name="lc_player_music_hint">OK play / pause   ← → previous / next   Back twice to disconnect</string>
     <string name="lc_player_pin">Enter this code on your device</string>
+
+    <string name="lc_key_ok">OK</string>
+    <string name="lc_key_back">Back</string>
+    <string name="lc_key_back_twice">Back ×2</string>
+    <string name="lc_key_seek">Seek (hold to speed up)</string>
+    <string name="lc_key_pause">Play / pause</string>
+    <string name="lc_key_exit">Exit</string>
+    <string name="lc_key_tracks">Previous / next</string>
+    <string name="lc_key_disconnect">Disconnect</string>
 
     <string name="lc_error_link_expired">The link has expired or was refused. Cast again from your phone.</string>
     <string name="lc_error_decode">This TV cannot decode this video.</string>

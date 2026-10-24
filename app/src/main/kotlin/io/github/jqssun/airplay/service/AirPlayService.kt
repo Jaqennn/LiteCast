@@ -81,6 +81,9 @@ data class VideoPlaybackInfo(
     val speed: Float = 1f,
     val skipSilence: Boolean = false,
     val buffering: Boolean = false,
+    // LiteCast: the TV player hides the time bar for live streams and only seeks where it can
+    val live: Boolean = false,
+    val seekable: Boolean = true,
 )
 
 class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
@@ -108,6 +111,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     val videoSource = _videoSource.asStateFlow()
     private val _videoError = MutableStateFlow<String?>(null)
     val videoError = _videoError.asStateFlow()
+    // true: playback gave up (message lingers, then the player closes); false: retrying / probing
+    private val _videoErrorFatal = MutableStateFlow(false)
+    val videoErrorFatal = _videoErrorFatal.asStateFlow()
     private val _dlnaStatus = MutableStateFlow(DlnaRenderer.Status.STOPPED)
     val dlnaStatus = _dlnaStatus.asStateFlow()
     private val _serverPort = MutableStateFlow(0)
@@ -354,6 +360,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
                     speed = snapshot.speed,
                     skipSilence = snapshot.skipSilence,
                     buffering = snapshot.buffering,
+                    live = snapshot.live,
+                    seekable = snapshot.seekable || !snapshot.live,
                 )
             }
         }
@@ -741,6 +749,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         if (!usingScreen && !_audioOnly.value) {
             // pure music streaming (not screen mirroring audio)
             _setAudioOnly(true)
+            // LiteCast: show the now-playing card on the TV
+            launchVisualSession()
         }
         log("Audio format: ct=$ct spf=$spf screen=$usingScreen")
     }
@@ -965,7 +975,6 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _refreshDacpPlayer()
         if (audioOnly && !prev) {
             mediaSession?.isActive = true
-            launchVisualSession()
             log("Audio mode")
         } else if (!audioOnly && prev) {
             mediaSession?.isActive = false
@@ -1239,6 +1248,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             return
         }
         val delay = DLNA_RETRY_DELAYS_S[_dlnaRetries++]
+        _videoErrorFatal.value = false
         _videoError.value = getString(R.string.lc_error_retrying, delay)
         _mainHandler.removeCallbacks(_dlnaRetry)
         _mainHandler.postDelayed(_dlnaRetry, delay * 1000L)
@@ -1254,6 +1264,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     private fun _probeDlna() {
         _dlnaProbed = true
+        _videoErrorFatal.value = false
         _videoError.value = getString(R.string.lc_error_probing)
         val uri = _dlnaUri
         _dlnaProbe.execute {
@@ -1281,6 +1292,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     private fun _failDlna(message: String) {
         _mainHandler.removeCallbacks(_dlnaRetry)
         _dlnaFailing = true
+        _videoErrorFatal.value = true
         _videoError.value = message
         dlnaRenderer?.transport?.onError()
         _mainHandler.removeCallbacks(_dlnaFailEnd)

@@ -79,6 +79,17 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all { test ->
+            // -Pscreenshots renders the TV UI to docs/screenshots (Robolectric native graphics)
+            if (providers.gradleProperty("screenshots").isPresent) {
+                test.systemProperty("litecast.screenshots", "true")
+                test.systemProperty("roborazzi.test.record", "true")
+            }
+            providers.gradleProperty("robolectricRepo").orNull?.let {
+                test.systemProperty("robolectric.dependency.repo.url", it)
+            }
+        }
     }
 
     dependenciesInfo {
@@ -147,4 +158,10 @@ dependencies {
     implementation(libs.hilt.navigation.compose)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
 }

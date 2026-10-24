@@ -39,6 +39,12 @@ media3-exoplayer-hls = { group = "androidx.media3", name = "media3-exoplayer-hls
 # LiteCast: DLNA senders also push DASH manifests
 media3-exoplayer-dash = { group = "androidx.media3", name = "media3-exoplayer-dash", version.ref = "media3" }
 junit = { group = "junit", name = "junit", version = "4.13.2" }
+# LiteCast: JVM screenshots of the TV UI (opt-in: ./gradlew testDebugUnitTest -Pscreenshots)
+robolectric = { group = "org.robolectric", name = "robolectric", version = "4.17" }
+roborazzi = { group = "io.github.takahirom.roborazzi", name = "roborazzi", version = "1.77.0" }
+roborazzi-compose = { group = "io.github.takahirom.roborazzi", name = "roborazzi-compose", version = "1.77.0" }
+compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 media3-transformer = { group = "androidx.media3", name = "media3-transformer", version.ref = "media3" }
 media3-ui-compose-material3 = { group = "androidx.media3", name = "media3-ui-compose-material3", version.ref = "media3" }
 

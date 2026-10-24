@@ -56,12 +56,19 @@
 
     <string name="lc_player_preparing">正在准备视频…</string>
     <string name="lc_player_live">直播</string>
-    <string name="lc_player_hint">← → 快退 / 快进（按住加速）　OK 暂停　返回 退出</string>
     <string name="lc_player_mirroring">屏幕镜像中</string>
     <string name="lc_player_back_again">再按一次返回键断开投屏</string>
     <string name="lc_player_music">正在通过 AirPlay 播放</string>
-    <string name="lc_player_music_hint">OK 播放 / 暂停　← → 上一首 / 下一首　连按两次返回 断开</string>
     <string name="lc_player_pin">在你的设备上输入这个配对码</string>
+
+    <string name="lc_key_ok">OK</string>
+    <string name="lc_key_back">返回</string>
+    <string name="lc_key_back_twice">返回 ×2</string>
+    <string name="lc_key_seek">快退 / 快进（按住加速）</string>
+    <string name="lc_key_pause">播放 / 暂停</string>
+    <string name="lc_key_exit">退出</string>
+    <string name="lc_key_tracks">上一首 / 下一首</string>
+    <string name="lc_key_disconnect">断开</string>
 
     <string name="lc_error_link_expired">链接已失效或被拒绝，请在手机上重新投屏。</string>
     <string name="lc_error_decode">这台电视无法解码这个视频。</string>

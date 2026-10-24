@@ -18,11 +18,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.East
+import androidx.compose.material.icons.rounded.West
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -109,15 +113,51 @@ fun InfoCard(icon: ImageVector, title: String, body: String, modifier: Modifier 
             .clip(RoundedCornerShape(20.dp))
             .background(Tv.Surface)
             .border(1.dp, Tv.Stroke, RoundedCornerShape(20.dp))
-            .padding(horizontal = 24.dp, vertical = 22.dp),
+            .padding(horizontal = 24.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Box(
-            Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(Tv.AccentSoft),
-            contentAlignment = Alignment.Center,
-        ) { Icon(icon, contentDescription = null, tint = Tv.Accent, modifier = Modifier.size(22.dp)) }
-        Text(title, style = Tv.Label.copy(fontSize = Tv.Title.fontSize * 0.8f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(body, style = Tv.Body)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(36.dp).clip(RoundedCornerShape(11.dp)).background(Tv.AccentSoft),
+                contentAlignment = Alignment.Center,
+            ) { Icon(icon, contentDescription = null, tint = Tv.Accent, modifier = Modifier.size(20.dp)) }
+            Spacer(Modifier.width(14.dp))
+            Text(title, style = Tv.Label.copy(fontSize = Tv.Body.fontSize), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Text(body, style = Tv.Body.copy(fontSize = Tv.Body.fontSize * 0.92f, lineHeight = Tv.Body.lineHeight * 0.95f))
+    }
+}
+
+/** Key cap drawn as left/right arrows (fonts disagree on where the ←/→ glyphs sit). */
+const val KEY_LEFT_RIGHT = "←→"
+
+/** Remote-control hint: key caps followed by what they do. */
+@Composable
+fun KeyHints(hints: List<Pair<String, String>>, modifier: Modifier = Modifier) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(22.dp), verticalAlignment = Alignment.CenterVertically) {
+        for ((key, action) in hints) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .heightIn(min = 22.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .border(1.dp, Color(0x59FFFFFF), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (key == KEY_LEFT_RIGHT) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Icon(Icons.Rounded.West, contentDescription = null, tint = Tv.TextPrimary, modifier = Modifier.size(15.dp))
+                            Icon(Icons.Rounded.East, contentDescription = null, tint = Tv.TextPrimary, modifier = Modifier.size(15.dp))
+                        }
+                    } else {
+                        Text(key, style = Tv.Caption.copy(color = Tv.TextPrimary, fontSize = Tv.Caption.fontSize * 0.9f))
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(action, style = Tv.Caption.copy(color = Tv.TextSecondary))
+            }
+        }
     }
 }
 

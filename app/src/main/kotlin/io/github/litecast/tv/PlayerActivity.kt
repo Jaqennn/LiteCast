@@ -37,6 +37,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -121,6 +122,10 @@ private fun PlayerScreen(svc: AirPlayService?, pin: String?, onFinish: () -> Uni
     val mirroring = svc?.mirroringActive.collectOr(false)
     val music = svc?.audioOnly.collectOr(false)
     val connections = svc?.connectionCount.collectOr(0)
+    val track = svc?.trackInfo.collectOr(TrackInfo())
+    val musicDuration = svc?.durationMs.collectOr(0L)
+    // audio-only is also reported for a moment after mirroring stops; only real music gets a card
+    val musicPlaying = music && connections > 0 && (track.title.isNotEmpty() || musicDuration > 0)
     val pending by produceState(false, svc) {
         while (true) { value = svc?.videoSessionPending() ?: false; delay(250) }
     }
@@ -128,7 +133,7 @@ private fun PlayerScreen(svc: AirPlayService?, pin: String?, onFinish: () -> Uni
         pin != null -> Mode.PIN
         video -> Mode.VIDEO
         mirroring -> Mode.MIRROR
-        music && connections > 0 -> Mode.MUSIC
+        musicPlaying -> Mode.MUSIC
         pending -> Mode.PREPARING
         else -> Mode.IDLE
     }
@@ -162,6 +167,7 @@ private fun VideoView(svc: AirPlayService, onFinish: () -> Unit) {
     val title = svc.videoTitle.collectOr("")
     val source = svc.videoSource.collectOr(AirPlayService.VideoSource.AIRPLAY)
     val error = svc.videoError.collectOr(null)
+    val errorFatal = svc.videoErrorFatal.collectOr(false)
     val sequence = svc.videoPlaySeq.collectOr(0L)
 
     var overlayUntil by remember { mutableLongStateOf(0L) }
@@ -210,7 +216,8 @@ private fun VideoView(svc: AirPlayService, onFinish: () -> Unit) {
                         val forward = native.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT || native.keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD
                         val held = native.eventTime - native.downTime
                         val tooSoon = native.repeatCount > 0 && SystemClock.elapsedRealtime() - lastSeekAt < 250
-                        if (!tooSoon) seekBy((if (forward) 1 else -1) * seekStep(held))
+                        if (!info.seekable) showOverlay()
+                        else if (!tooSoon) seekBy((if (forward) 1 else -1) * seekStep(held))
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER,
@@ -234,7 +241,7 @@ private fun VideoView(svc: AirPlayService, onFinish: () -> Unit) {
         )
 
         if (error != null) {
-            ErrorCard(error)
+            ErrorCard(error, fatal = errorFatal)
         } else if (info.buffering) {
             CircularProgressIndicator(color = Tv.Accent, strokeWidth = 4.dp, modifier = Modifier.size(56.dp))
         }
@@ -261,7 +268,7 @@ private fun seekStep(heldMs: Long): Long = 10_000L * when {
 }
 
 @Composable
-private fun VideoOverlay(title: String, source: String, info: VideoPlaybackInfo, seekTarget: Long?) {
+internal fun VideoOverlay(title: String, source: String, info: VideoPlaybackInfo, seekTarget: Long?) {
     Box(Modifier.fillMaxSize()) {
         // top: title
         Box(
@@ -282,7 +289,7 @@ private fun VideoOverlay(title: String, source: String, info: VideoPlaybackInfo,
             Box(
                 Modifier.align(Alignment.Center).size(96.dp).clip(CircleShape).background(Tv.Scrim),
                 contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Rounded.Pause, contentDescription = null, tint = Tv.TextPrimary, modifier = Modifier.size(52.dp)) }
+            ) { Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Tv.TextPrimary, modifier = Modifier.size(56.dp)) }
         }
         // bottom: progress
         Column(
@@ -292,17 +299,14 @@ private fun VideoOverlay(title: String, source: String, info: VideoPlaybackInfo,
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xD9000000))))
                 .padding(start = 48.dp, end = 48.dp, top = 48.dp, bottom = 32.dp)
         ) {
-            val live = info.durationMs <= 0
             val shown = seekTarget ?: info.positionMs
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (live) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        StatusDot(Tv.Error)
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.lc_player_live), style = Tv.Label)
-                    }
-                    Spacer(Modifier.weight(1f))
-                } else {
+            // live: a badge instead of a time bar; unknown length (still opening): neither
+            Row(Modifier.height(28.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (info.live) {
+                    StatusDot(Tv.Error)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.lc_player_live), style = Tv.Label)
+                } else if (info.durationMs > 0) {
                     Text(formatTime(shown), style = Tv.Label.copy(color = if (seekTarget != null) Tv.Accent else Tv.TextPrimary))
                     Spacer(Modifier.width(18.dp))
                     ProgressLine(shown.toFloat() / info.durationMs, Modifier.weight(1f))
@@ -310,8 +314,14 @@ private fun VideoOverlay(title: String, source: String, info: VideoPlaybackInfo,
                     Text(formatTime(info.durationMs), style = Tv.Label.copy(color = Tv.TextSecondary))
                 }
             }
-            Spacer(Modifier.height(12.dp))
-            Text(stringResource(R.string.lc_player_hint), style = Tv.Caption)
+            Spacer(Modifier.height(14.dp))
+            KeyHints(
+                listOfNotNull(
+                    if (info.seekable) KEY_LEFT_RIGHT to stringResource(R.string.lc_key_seek) else null,
+                    stringResource(R.string.lc_key_ok) to stringResource(R.string.lc_key_pause),
+                    stringResource(R.string.lc_key_back) to stringResource(R.string.lc_key_exit),
+                )
+            )
         }
     }
 }
@@ -324,7 +334,7 @@ private fun SourceChip(text: String) {
 }
 
 @Composable
-private fun ErrorCard(message: String) {
+internal fun ErrorCard(message: String, fatal: Boolean = false) {
     Column(
         Modifier
             .widthIn(max = 560.dp)
@@ -334,7 +344,11 @@ private fun ErrorCard(message: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        CircularProgressIndicator(color = Tv.Warning, strokeWidth = 3.dp, modifier = Modifier.size(32.dp))
+        if (fatal) {
+            Icon(Icons.Rounded.WarningAmber, contentDescription = null, tint = Tv.Warning, modifier = Modifier.size(36.dp))
+        } else {
+            CircularProgressIndicator(color = Tv.Warning, strokeWidth = 3.dp, modifier = Modifier.size(32.dp))
+        }
         Text(message, style = Tv.Body.copy(color = Tv.TextPrimary))
     }
 }
@@ -366,21 +380,26 @@ private fun MirrorView(svc: AirPlayService, onFinish: () -> Unit) {
             aspectRatio = aspect,
         )
         AnimatedVisibility(now < hintUntil, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopStart)) {
-            Row(
-                Modifier.padding(32.dp).clip(RoundedCornerShape(12.dp)).background(Tv.Scrim).padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Rounded.Cast, contentDescription = null, tint = Tv.Accent, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(10.dp))
-                Text(stringResource(R.string.lc_player_mirroring), style = Tv.Label)
-            }
+            MirrorBadge()
         }
         BackHint(visible = now < backArmedUntil)
     }
 }
 
 @Composable
-private fun BoxScope.BackHint(visible: Boolean) {
+internal fun MirrorBadge() {
+    Row(
+        Modifier.padding(32.dp).clip(RoundedCornerShape(12.dp)).background(Tv.Scrim).padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.Cast, contentDescription = null, tint = Tv.Accent, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(stringResource(R.string.lc_player_mirroring), style = Tv.Label)
+    }
+}
+
+@Composable
+internal fun BoxScope.BackHint(visible: Boolean) {
     AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
         Box(
             Modifier.padding(bottom = 40.dp).clip(RoundedCornerShape(50)).background(Tv.Scrim).padding(horizontal = 22.dp, vertical = 12.dp)
@@ -409,7 +428,6 @@ private fun MusicView(svc: AirPlayService, onFinish: () -> Unit) {
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Tv.BackgroundTop, Tv.Background)))
             .focusRequester(focus)
             .focusable()
             .onPreviewKeyEvent { event ->
@@ -421,6 +439,16 @@ private fun MusicView(svc: AirPlayService, onFinish: () -> Unit) {
                     else -> false
                 }
             },
+    ) {
+        MusicContent(track, position, duration, playing, backHint = now < backArmedUntil)
+    }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+}
+
+@Composable
+internal fun MusicContent(track: TrackInfo, position: Long, duration: Long, playing: Boolean, backHint: Boolean) {
+    Box(
+        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Tv.BackgroundTop, Tv.Background))),
         contentAlignment = Alignment.Center,
     ) {
         Row(Modifier.padding(horizontal = 80.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -455,20 +483,25 @@ private fun MusicView(svc: AirPlayService, onFinish: () -> Unit) {
                 Spacer(Modifier.height(18.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = null, tint = Tv.TextSecondary, modifier = Modifier.size(22.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Text(stringResource(R.string.lc_player_music_hint), style = Tv.Caption)
+                    Spacer(Modifier.width(14.dp))
+                    KeyHints(
+                        listOf(
+                            stringResource(R.string.lc_key_ok) to stringResource(R.string.lc_key_pause),
+                            KEY_LEFT_RIGHT to stringResource(R.string.lc_key_tracks),
+                            stringResource(R.string.lc_key_back_twice) to stringResource(R.string.lc_key_disconnect),
+                        )
+                    )
                 }
             }
         }
-        BackHint(visible = now < backArmedUntil)
+        BackHint(visible = backHint)
     }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 }
 
 // ------------------------------------------------------------------------------------ pin / waiting
 
 @Composable
-private fun PinView(pin: String) {
+internal fun PinView(pin: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text("AirPlay", style = Tv.Caption.copy(color = Tv.Accent))
         Spacer(Modifier.height(18.dp))
@@ -479,7 +512,7 @@ private fun PinView(pin: String) {
 }
 
 @Composable
-private fun Waiting(text: String) {
+internal fun Waiting(text: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         CircularProgressIndicator(color = Tv.Accent, strokeWidth = 4.dp, modifier = Modifier.size(48.dp))
         Spacer(Modifier.height(20.dp))
