@@ -106,7 +106,7 @@ class DlnaProtocolTest {
     @Test
     fun formatSniffing() {
         assertEquals("HLS", MediaProbe.inspect("#EXTM3U\n#EXT-X-VERSION:3".toByteArray(), "", "").kind())
-        assertEquals("HLS", MediaProbe.inspect("﻿  #EXTM3U".toByteArray(), "video/mp4", "").kind())
+        assertEquals("HLS", MediaProbe.inspect("\uFEFF  #EXTM3U".toByteArray(), "video/mp4", "").kind())
         val mp4 = byteArrayOf(0, 0, 0, 24) + "ftypisom".toByteArray()
         assertEquals("video/mp4", MediaProbe.inspect(mp4, "", "").mime())
         assertEquals("video/x-flv", MediaProbe.inspect("FLV\u0001".toByteArray(), "", "").mime())
@@ -121,7 +121,7 @@ class DlnaProtocolTest {
 
     @Test
     fun xmlHelpersTolerateBomAndNamespaces() {
-        val envelope = "﻿  <?xml version=\"1.0\"?><s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body>" +
+        val envelope = "\uFEFF  <?xml version=\"1.0\"?><s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body>" +
             "<u:SetAVTransportURI xmlns:u=\"$av\"><InstanceID>0</InstanceID><CurrentURI>http://a/b.m3u8</CurrentURI></u:SetAVTransportURI></s:Body></s:Envelope>"
         val action = Xml.soapAction(envelope)
         assertEquals("SetAVTransportURI", Xml.local(action))

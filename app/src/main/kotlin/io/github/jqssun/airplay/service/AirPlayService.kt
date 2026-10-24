@@ -55,6 +55,7 @@ import io.github.jqssun.airplay.renderer.AirPlayVideoPlayer
 import io.github.jqssun.airplay.renderer.PlayOptions
 import io.github.jqssun.airplay.renderer.AudioRenderer
 import io.github.jqssun.airplay.renderer.VideoRenderer
+import io.github.jqssun.airplay.ui.isTvDevice
 import io.github.jqssun.airplay.viewmodel.DebugInfo
 import io.github.litecast.LiteCast
 import io.github.litecast.dlna.AvTransport
@@ -70,6 +71,8 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
@@ -252,6 +255,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        if (_isTv) _holdWakeLockWhileCasting()
         dacpController = DacpController(this)
         dacpPlayer = DacpPlayer(
             mainLooper,
@@ -390,11 +394,37 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         // LiteCast (after sony-airplay-tv): a TV receiver must come back after the system reclaims it
         if (intent?.action == ACTION_START_SERVER ||
             (intent == null && prefs.getBoolean(LiteCast.PREF_RECEIVER_ENABLED, true))) {
-            promoteToForeground()
+            // Android 12+ can refuse a foreground start after a sticky restart; give up quietly
+            // instead of crash-looping (the receiver comes back when the app or the TV starts)
+            try {
+                promoteToForeground()
+            } catch (e: IllegalStateException) {
+                log("Foreground start refused: ${e.message}")
+                stopSelf(startId)
+                return START_NOT_STICKY
+            } catch (e: SecurityException) {
+                log("Foreground start refused: ${e.message}")
+                stopSelf(startId)
+                return START_NOT_STICKY
+            }
             _startServer(ensureServiceStarted = false)
             if (_serverState.value != ServerState.RUNNING) stopSelf(startId)
         }
         return if (_serverState.value == ServerState.RUNNING) START_STICKY else START_NOT_STICKY
+    }
+
+    // LiteCast: always-on TV receiver; a permanent wake lock would keep the TV awake in standby
+    private val _isTv by lazy { isTvDevice() }
+
+    private fun _holdWakeLockWhileCasting() {
+        lifecycleScope.launch {
+            combine(_connectionCount, _videoPlaybackActive) { senders, video -> senders > 0 || video }
+                .distinctUntilChanged()
+                .collect { casting ->
+                    val lock = wakeLock ?: return@collect
+                    if (casting) lock.acquire() else if (lock.isHeld) lock.release()
+                }
+        }
     }
 
     fun startServer() {
@@ -412,7 +442,12 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         val effectiveName = prefs[Prefs.SERVER_NAME].ifBlank { Prefs.SERVER_NAME.def }
 
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "airplay:server").apply { acquire() }
+        // LiteCast: a TV must still be able to sleep in standby, so there the lock is only held
+        // while something is being cast (see _holdWakeLockWhileCasting); elsewhere as upstream
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "airplay:server").apply {
+            setReferenceCounted(false)
+            if (!_isTv) acquire()
+        }
 
         nsdManager = NsdServiceManager(this).apply { acquireMulticastLock() }
 

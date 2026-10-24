@@ -129,6 +129,7 @@ git clone --recursive https://github.com/<你的用户名>/LiteCast.git
 cd LiteCast
 ./gradlew assembleDebug          # 输出 app/build/outputs/apk/debug/app-debug.apk
 ./gradlew testDebugUnitTest      # 单元测试
+./gradlew lintDebug              # 静态检查（上游遗留的问题记在 app/lint-baseline.xml，新问题会报错）
 ./gradlew testDebugUnitTest -Pscreenshots   # 重新生成 docs/screenshots 里的界面截图
 ```
 

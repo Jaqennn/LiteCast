@@ -92,6 +92,11 @@ android {
         }
     }
 
+    // LiteCast: findings inherited from upstream live in the baseline; anything new fails lint
+    lint {
+        baseline = file("lint-baseline.xml")
+    }
+
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
@@ -100,6 +105,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // LiteCast: the DLNA code uses java.util.function, streams and java.time (API 24-26)
+        isCoreLibraryDesugaringEnabled = true
     }
 
     buildFeatures {
@@ -130,6 +137,7 @@ tasks.configureEach {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime)

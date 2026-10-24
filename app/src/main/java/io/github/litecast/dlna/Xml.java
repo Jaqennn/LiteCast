@@ -32,7 +32,7 @@ public final class Xml {
 
     public static Document parse(String value) throws Exception {
         String text = value == null ? "" : value;
-        if (text.startsWith("﻿")) text = text.substring(1);
+        if (text.startsWith("\uFEFF")) text = text.substring(1);
         text = text.trim();
         // No DTDs at all: closes off entity expansion and external fetches on every parser.
         if (text.contains("<!DOCTYPE") || text.contains("<!ENTITY")) throw new IllegalArgumentException("DTD disabled");

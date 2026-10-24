@@ -89,6 +89,7 @@ class AirPlayVideoPlayer(private val context: Context) {
         }
     }
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun play(location: String, startPositionSeconds: Float, options: PlayOptions = PlayOptions()) = mainHandler.post {
         // recycling must not report the stopped sentinel: senders poll right after /play
         _stopInternal(reportStopped = false)

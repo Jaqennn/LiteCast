@@ -58,7 +58,7 @@ public final class MediaProbe {
 
     public static Format inspect(byte[] bytes, String responseType, String finalUri) {
         String prefix = new String(bytes, StandardCharsets.UTF_8);
-        if (prefix.startsWith("﻿")) prefix = prefix.substring(1);
+        if (prefix.startsWith("\uFEFF")) prefix = prefix.substring(1);
         prefix = prefix.trim();
         String lower = prefix.toLowerCase(Locale.US);
         if (prefix.startsWith("#EXTM3U")) return new Format("HLS", HLS);
