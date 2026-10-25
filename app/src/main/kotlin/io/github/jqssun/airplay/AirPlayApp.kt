@@ -10,5 +10,7 @@ class AirPlayApp : Application() {
         super.onCreate()
         // LiteCast: TV-friendly defaults (device name, start on boot) on first run
         LiteCast.applyDefaults(this)
+        // LiteCast: a proxy on the TV's Wi-Fi must not swallow LAN and localhost playback
+        io.github.litecast.net.LanProxyBypass.install()
     }
 }

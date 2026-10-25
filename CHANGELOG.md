@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.1
+
+- The player shows the resolution it is really playing (720P / 1080P / 2K / 4K) next to the
+  DLNA / AirPlay label, so it is clear what quality the app sent
+- A video that has not started after 15 seconds says why that may be; an AirPlay video whose
+  server the TV cannot reach (for example YouTube where it is blocked) says so and suggests
+  screen mirroring, instead of spinning and closing silently
+- A proxy set on the TV's Wi-Fi is no longer used for LAN and localhost addresses (the AirPlay
+  HLS proxy, videos served by phones), so the TV can reach YouTube through a proxy without
+  breaking casting
+
 ## 0.1.0 — first release
 
 Based on jqssun/android-airplay-server `a46cca0` and the DLNA renderer of puppy-store-cast.

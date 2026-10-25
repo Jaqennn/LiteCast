@@ -78,4 +78,6 @@
     <string name="lc_error_retrying">Connection interrupted, retrying in %1$d s…</string>
     <string name="lc_error_probing">Checking the stream format…</string>
     <string name="lc_error_not_media">The phone sent a web page instead of a video.</string>
+    <string name="lc_error_slow_start">The video is taking a long time to load. Videos from sites the TV itself cannot reach (YouTube, where it is blocked) will not play this way; screen mirroring still works.</string>
+    <string name="lc_error_unreachable">The TV cannot reach the video\'s server. Sites like YouTube must be reachable from the TV itself; screen mirroring still works.</string>
 </resources>

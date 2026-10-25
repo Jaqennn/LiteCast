@@ -56,6 +56,7 @@ import io.github.jqssun.airplay.renderer.PlayOptions
 import io.github.jqssun.airplay.renderer.AudioRenderer
 import io.github.jqssun.airplay.renderer.VideoRenderer
 import io.github.jqssun.airplay.ui.isTvDevice
+import io.github.litecast.net.LanProxyBypass
 import io.github.jqssun.airplay.viewmodel.DebugInfo
 import io.github.litecast.LiteCast
 import io.github.litecast.dlna.AvTransport
@@ -131,6 +132,16 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     private val _dlnaProbe = Executors.newSingleThreadExecutor()
     private val _dlnaRetry = Runnable { _retryDlna() }
     private val _dlnaFailEnd = Runnable { _endVideoPlayback("DLNA playback failed") }
+    // LiteCast: say why a video doesn't start instead of spinning forever
+    private val _airplayFailEnd = Runnable { _endVideoPlayback("AirPlay Video failed") }
+    @Volatile private var _videoEverReady = false
+    private val _slowStart = Runnable {
+        if (_videoPlaybackActive.value && !_videoEverReady && _videoError.value == null) {
+            _videoErrorFatal.value = false
+            _videoError.value = getString(R.string.lc_error_slow_start)
+            log("Video still not ready after ${SLOW_START_MS / 1000}s")
+        }
+    }
 
     private val prefs: SharedPreferences by lazy {
         getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE)
@@ -355,6 +366,11 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
                 NativeBridge.nativeUpdatePlaybackInfo(nativeHandle, snapshot.position, snapshot.duration, snapshot.rate, snapshot.ready)
             }
             if (_videoSource.value == VideoSource.DLNA && _videoPlaybackActive.value) _onDlnaSnapshot(snapshot)
+            if (_videoPlaybackActive.value && snapshot.playerReady && !_videoEverReady) {
+                _videoEverReady = true
+                _mainHandler.removeCallbacks(_slowStart)
+                if (_videoError.value == getString(R.string.lc_error_slow_start)) _videoError.value = null
+            }
             if (_videoPlaybackActive.value) {
                 _updateVideoPlaybackState(snapshot.position, snapshot.rate)
                 _videoPlaybackInfo.value = VideoPlaybackInfo(
@@ -711,6 +727,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _videoSource.value = VideoSource.AIRPLAY
         _videoError.value = null
         _mainHandler.removeCallbacks(_dlnaFailEnd)
+        _mainHandler.removeCallbacks(_airplayFailEnd)
+        _mainHandler.removeCallbacks(_slowStart)
         airPlayVideoPlayer.stop()
         if (!_audioOnly.value) mediaSession?.isActive = false
         log(message)
@@ -759,6 +777,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _videoPlaybackSize.value = null
         _videoTitle.value = ""
         _videoPlaybackActive.value = true
+        _armSlowStart()
         airPlayVideoPlayer.play(location, startPositionSeconds)
         launchVisualSession()
         // claim media-button routing for keys that arrive as media-session events
@@ -1225,6 +1244,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _videoPlaybackSize.value = null
         _videoTitle.value = title
         _videoPlaybackActive.value = true
+        _armSlowStart()
         airPlayVideoPlayer.play(uri, 0f, _dlnaOptions(autoPlay))
         launchVisualSession()
         mediaSession?.isActive = true
@@ -1263,7 +1283,27 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         dlnaRenderer?.transport?.onInactive()
     }
 
+    private fun _armSlowStart() {
+        _videoEverReady = false
+        _mainHandler.removeCallbacks(_airplayFailEnd)
+        _mainHandler.removeCallbacks(_slowStart)
+        _mainHandler.postDelayed(_slowStart, SLOW_START_MS)
+    }
+
     private fun _onVideoError(error: PlaybackException): Boolean {
+        if (_videoPlaybackActive.value && _videoSource.value == VideoSource.AIRPLAY) {
+            // LiteCast: e.g. YouTube streams come straight from YouTube's servers, which the TV
+            // may not be able to reach; show why for a few seconds, then end like upstream
+            _mainHandler.removeCallbacks(_slowStart)
+            _videoErrorFatal.value = true
+            _videoError.value = getString(
+                if (error.errorCode in 2000..2999) R.string.lc_error_unreachable else R.string.lc_error_unplayable
+            )
+            _mainHandler.removeCallbacks(_airplayFailEnd)
+            _mainHandler.postDelayed(_airplayFailEnd, DLNA_ERROR_LINGER_MS)
+            log("AirPlay Video error ${error.errorCodeName}")
+            return true
+        }
         if (!_isDlnaActive()) return false
         val status = _httpStatus(error)
         when {
@@ -1303,6 +1343,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _videoError.value = getString(R.string.lc_error_probing)
         val uri = _dlnaUri
         _dlnaProbe.execute {
+            LanProxyBypass.install()
             val result = runCatching { MediaProbe.fetch(uri) }.getOrNull()
             _mainHandler.post {
                 if (!_isDlnaActive() || uri != _dlnaUri) return@post
@@ -1518,6 +1559,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         // LiteCast
         private const val DLNA_LIVE_OFFSET_MS = 8_000L
         private const val DLNA_ERROR_LINGER_MS = 5_000L
+        private const val SLOW_START_MS = 15_000L
         private val DLNA_RETRY_DELAYS_S = intArrayOf(2, 5, 10)
         private val EXPIRED_STATUS = setOf(401, 403, 404, 410)
 

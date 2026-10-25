@@ -169,6 +169,7 @@ private fun VideoView(svc: AirPlayService, onFinish: () -> Unit) {
     val error = svc.videoError.collectOr(null)
     val errorFatal = svc.videoErrorFatal.collectOr(false)
     val sequence = svc.videoPlaySeq.collectOr(0L)
+    val size = svc.videoPlaybackSize.collectOr(null)
 
     var overlayUntil by remember { mutableLongStateOf(0L) }
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
@@ -252,6 +253,7 @@ private fun VideoView(svc: AirPlayService, onFinish: () -> Unit) {
                 source = if (source == AirPlayService.VideoSource.DLNA) "DLNA" else "AirPlay",
                 info = info,
                 seekTarget = seekTarget,
+                quality = size?.let { (w, h) -> qualityLabel(w, h) },
             )
         }
     }
@@ -267,8 +269,25 @@ private fun seekStep(heldMs: Long): Long = 10_000L * when {
     else -> 6
 }
 
+/**
+ * "4K", "1080P", … from the decoded size, so it is obvious what quality the app really sent.
+ * Looks at both sides: vertical phone videos (1080x1920) and wide films (3840x1600) read right.
+ */
+internal fun qualityLabel(width: Int, height: Int): String? {
+    val long = maxOf(width, height)
+    val short = minOf(width, height)
+    if (short <= 0) return null
+    return when {
+        long >= 3800 || short >= 2000 -> "4K"
+        long >= 2500 || short >= 1400 -> "2K"
+        long >= 1900 || short >= 1000 -> "1080P"
+        long >= 1250 || short >= 700 -> "720P"
+        else -> "${short}P"
+    }
+}
+
 @Composable
-internal fun VideoOverlay(title: String, source: String, info: VideoPlaybackInfo, seekTarget: Long?) {
+internal fun VideoOverlay(title: String, source: String, info: VideoPlaybackInfo, seekTarget: Long?, quality: String? = null) {
     Box(Modifier.fillMaxSize()) {
         // top: title
         Box(
@@ -280,6 +299,10 @@ internal fun VideoOverlay(title: String, source: String, info: VideoPlaybackInfo
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SourceChip(source)
+                if (quality != null) {
+                    Spacer(Modifier.width(8.dp))
+                    QualityChip(quality)
+                }
                 Spacer(Modifier.width(14.dp))
                 Text(title.ifEmpty { " " }, style = Tv.Title, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -331,6 +354,13 @@ private fun SourceChip(text: String) {
     Box(
         Modifier.clip(RoundedCornerShape(8.dp)).background(Tv.AccentSoft).padding(horizontal = 10.dp, vertical = 4.dp)
     ) { Text(text, style = Tv.Caption.copy(color = Tv.Accent, fontWeight = FontWeight.SemiBold)) }
+}
+
+@Composable
+private fun QualityChip(text: String) {
+    Box(
+        Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0x26FFFFFF)).padding(horizontal = 10.dp, vertical = 4.dp)
+    ) { Text(text, style = Tv.Caption.copy(color = Tv.TextPrimary, fontWeight = FontWeight.SemiBold)) }
 }
 
 @Composable

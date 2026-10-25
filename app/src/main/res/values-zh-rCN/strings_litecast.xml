@@ -77,4 +77,6 @@
     <string name="lc_error_retrying">连接中断，%1$d 秒后重试…</string>
     <string name="lc_error_probing">正在识别视频格式…</string>
     <string name="lc_error_not_media">手机发来的是网页，不是视频。</string>
+    <string name="lc_error_slow_start">视频一直没加载出来。如果是油管这类境外网站的视频，需要电视本身能访问那个网站；也可以改用屏幕镜像。</string>
+    <string name="lc_error_unreachable">电视连不上视频服务器。油管这类网站需要电视本身能访问；也可以改用屏幕镜像。</string>
 </resources>

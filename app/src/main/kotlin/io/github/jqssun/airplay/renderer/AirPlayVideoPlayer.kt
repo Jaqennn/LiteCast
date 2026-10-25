@@ -17,6 +17,7 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import io.github.litecast.net.LanAwareDataSource
 
 // rate is 0 while buffering; speed is the configured rate regardless of pause state
 // native reads the effective rate, overlay reads playWhenReady + speed + skipSilence
@@ -94,14 +95,15 @@ class AirPlayVideoPlayer(private val context: Context) {
         // recycling must not report the stopped sentinel: senders poll right after /play
         _stopInternal(reportStopped = false)
         val builder = ExoPlayer.Builder(context)
+        // LiteCast: LAN and localhost (the HLS proxy) never go through a proxy set on the TV's
+        // Wi-Fi; DLNA URLs also get a browser-like user agent and patient timeouts
+        val http = DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
         options.userAgent?.let { ua ->
-            val http = DefaultHttpDataSource.Factory()
-                .setUserAgent(ua)
-                .setConnectTimeoutMs(12_000)
-                .setReadTimeoutMs(15_000)
-                .setAllowCrossProtocolRedirects(true)
-            builder.setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http)))
+            http.setUserAgent(ua).setConnectTimeoutMs(12_000).setReadTimeoutMs(15_000)
         }
+        builder.setMediaSourceFactory(
+            DefaultMediaSourceFactory(LanAwareDataSource.Factory(DefaultDataSource.Factory(context, http)))
+        )
         val p = builder.build().also {
             it.addListener(_listener)
             pendingSurface?.let { s -> it.setVideoSurface(s) }

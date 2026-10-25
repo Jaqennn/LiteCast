@@ -87,6 +87,7 @@ class ScreenshotTest {
                 source = "DLNA",
                 info = VideoPlaybackInfo(positionMs = 754_000, durationMs = 2_712_000, playing = false),
                 seekTarget = null,
+                quality = "1080P",
             )
         }
     }
@@ -95,6 +96,13 @@ class ScreenshotTest {
     fun liveError() = shot("player-retry") {
         Box(Modifier.fillMaxSize().background(Color(0xFF101418)), contentAlignment = Alignment.Center) {
             ErrorCard("连接中断，5 秒后重试…")
+        }
+    }
+
+    @Test
+    fun slowStart() = shot("player-slow") {
+        Box(Modifier.fillMaxSize().background(Color(0xFF101418)), contentAlignment = Alignment.Center) {
+            ErrorCard("视频一直没加载出来。如果是油管这类境外网站的视频，需要电视本身能访问那个网站；也可以改用屏幕镜像。")
         }
     }
 
@@ -168,9 +176,16 @@ class ScreenshotEnglishTest {
     fun homeEnglish() = shot("en-home-popup") { HomeContent(home, {}, {}, {}, {}, {}) }
 
     @Test
+    fun unreachableEnglish() = shot("en-player-unreachable") {
+        Box(Modifier.fillMaxSize().background(Color(0xFF101418)), contentAlignment = Alignment.Center) {
+            ErrorCard("The TV cannot reach the video's server. Sites like YouTube must be reachable from the TV itself; screen mirroring still works.", fatal = true)
+        }
+    }
+
+    @Test
     fun videoEnglish() = shot("en-player-video") {
         Box(Modifier.fillMaxSize().background(Color(0xFF1B2733))) {
-            VideoOverlay("Evening News", "AirPlay", VideoPlaybackInfo(playing = true, live = true, seekable = false), null)
+            VideoOverlay("Evening News", "AirPlay", VideoPlaybackInfo(playing = true, live = true, seekable = false), null, quality = "4K")
         }
     }
 }
