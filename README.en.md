@@ -7,7 +7,9 @@ apps (DLNA), on Android and iOS alike. No account, no time limit, no upsell.
 It was made for a Chinese-market Sony X90J, whose built-in casting (Lebo / 乐播) started asking
 for payment, but it runs on most Android TVs (Android 6.0+, ARM).
 
-[中文说明](README.md)
+Works on Android TV / Google TV sets and boxes from Sony Bravia, TCL, Hisense, Xiaomi and others; tested on a Sony X90J.
+
+[中文说明](README.md) · [Download APK](https://github.com/Jaqennn/LiteCast/releases/latest)
 
 | Home | Video | AirPlay music |
 |---|---|---|
@@ -53,12 +55,18 @@ background and starts with the TV.
   cast and closes itself afterwards.
 
 ```bash
-git clone --recursive https://github.com/<you>/LiteCast.git
+git clone --recursive https://github.com/Jaqennn/LiteCast.git
 ./gradlew assembleDebug        # JDK 21, Android SDK 37, NDK 27.0.12077973, CMake 3.22.1
 ./gradlew testDebugUnitTest
 ```
 
 Release signing and CI secrets are described in the [Chinese README](README.md#从源码构建).
+
+## About
+
+Built with AI (Claude) on top of the open-source projects above, from the author's own idea log.
+Sister project: [ShiYing](https://github.com/Jaqennn/ShiYing), a Windows GUI video downloader for
+YouTube, Bilibili, X and Douyin with AI Chinese subtitles.
 
 ## License
 

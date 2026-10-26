@@ -4,7 +4,11 @@
 
 最初是为了国行索尼 X90J 做的：这台电视自带的投屏走的是乐播，用一会儿就提示收费。轻投在大多数 Android TV / 安卓电视上都能用（Android 6.0 及以上，ARM 芯片）。
 
-[English](README.en.md)
+**适用**：索尼 Bravia、TCL、海信、小米等安卓系统的电视和电视盒子，Android TV / Google TV 均可。目前在国行索尼 X90J 上实测过，其他型号欢迎在 [Issues](https://github.com/Jaqennn/LiteCast/issues) 反馈。
+
+A free, ad-free **AirPlay + DLNA casting receiver for Android TV / Sony Bravia**: iPhone screen mirroring and the cast button of video apps, no account, no time limit. [English README](README.en.md)
+
+[下载 APK](https://github.com/Jaqennn/LiteCast/releases/latest) · [常见问题](#常见问题) · [拾影 ShiYing：Windows 视频下载器](https://github.com/Jaqennn/ShiYing)
 
 | 主页 | 视频投屏 | AirPlay 音乐 |
 |---|---|---|
@@ -72,6 +76,15 @@ adb install -r LiteCast-x.y.z.apk
 
 ## 常见问题
 
+**索尼电视投屏提示收费（乐播）怎么办？**
+装上轻投，投屏时选带「· 轻投」的那个名字就行，不登录、不限时长、没有会员弹窗。乐播可以留着不管，两个能同时开着，详见上面「和电视自带的乐播共存」。
+
+**iPhone 怎么投屏到安卓电视 / 索尼电视？**
+电视上打开过一次轻投后，iPhone 和电视连同一个 Wi-Fi：整个屏幕用「控制中心 → 屏幕镜像」；看视频用 App 里的 AirPlay 或投屏按钮，这样手机可以锁屏。
+
+**和当贝投屏、乐播投屏、电视自带投屏有什么区别？**
+轻投完全免费开源，没有广告和会员，同时支持 AirPlay（苹果）和 DLNA（各家视频 App 的投屏按钮），不用切换模式。它做不到私有协议的投屏（比如乐播云投屏、华为 Cast+）和有 DRM 的内容，见上面「能投什么」。
+
 **手机上找不到电视**
 - 手机和电视要在同一个局域网；路由器的「访客网络」「AP 隔离」，以及一些 Mesh 设置会挡住设备发现。
 - iPhone 上的视频 App 第一次投屏时会问「允许查找本地网络上的设备」，要点允许（漏点了在 iPhone 设置 → 隐私与安全性 → 本地网络 里打开）。
@@ -131,7 +144,7 @@ app/src/test/                                   协议单元测试、socket 集�
 需要 JDK 21，以及 Android SDK（Platform 37、NDK 27.0.12077973、CMake 3.22.1；Gradle 会提示缺什么）。
 
 ```bash
-git clone --recursive https://github.com/<你的用户名>/LiteCast.git
+git clone --recursive https://github.com/Jaqennn/LiteCast.git
 cd LiteCast
 ./gradlew assembleDebug          # 输出 app/build/outputs/apk/debug/app-debug.apk
 ./gradlew testDebugUnitTest      # 单元测试
@@ -158,6 +171,14 @@ keyPassword=...
 git remote add upstream https://github.com/jqssun/android-airplay-server.git
 git fetch upstream && git merge upstream/main
 ```
+
+## 关于这个项目
+
+我把自己日常碰到的需求记下来，再用 AI（Claude）把它们做成软件，轻投是其中一个：起因是家里的索尼电视投屏开始收费。代码、测试和界面都是 AI 在开源项目的基础上完成的，我负责提需求和在自己的电视上实测。
+
+同系列的其他项目：
+
+- [拾影 ShiYing](https://github.com/Jaqennn/ShiYing)：免费开源的 Windows 视频下载器，支持 YouTube、B站、X、抖音无水印下载，带 AI 中文字幕
 
 ## 许可
 
