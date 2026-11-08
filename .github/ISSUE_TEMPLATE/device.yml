@@ -11,19 +11,26 @@ body:
     id: brand
     attributes:
       label: 电视品牌 / TV brand
+      description: 三星、LG 的电视不是安卓系统，暂时装不了轻投；接了电视盒子在用的，请选「电视盒子」 / Samsung and LG TVs don't run Android; if you use a TV box, pick "TV box"
       options:
-        - 索尼 Sony
         - 小米 / Redmi
-        - TCL / 雷鸟
         - 海信 / Vidda
+        - TCL / 雷鸟
         - 创维 / 酷开
+        - 索尼 Sony
         - 长虹
         - 康佳
         - 海尔
         - 夏普 Sharp
+        - 东芝 Toshiba
+        - 飞利浦 Philips
+        - 松下 Panasonic
         - 乐视
         - 华为 / 荣耀
-        - 电视盒子或投影仪 / TV box or projector
+        - 三星 Samsung
+        - LG
+        - 电视盒子（小米盒子、当贝、天猫魔盒等）/ TV box
+        - 投影仪（极米、当贝、坚果等）/ Projector
         - 其他（写在下面）/ Other (say which below)
     validations:
       required: true
