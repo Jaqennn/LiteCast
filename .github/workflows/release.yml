@@ -1,0 +1,115 @@
+name: Release
+
+# Builds, signs and publishes LiteCast.apk for the versionName in app/build.gradle.kts, with the
+# notes in docs/release-notes/<version>.md. Started by hand (Actions → Release → Run workflow)
+# or through the API. The signing key exists only in this repository's encrypted secrets
+# (KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD); see README → 从源码构建.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only build and check the signature, publish nothing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      # Fingerprint of LiteCast's release certificate (public, not a secret). Every APK we
+      # publish must carry it, or phones and TVs refuse to update over the installed app.
+      EXPECTED_CERT: 334e8ebcd06328e3c4476626e96c5265319b25d1b2a8bc64ea6f0d03bca5d98c
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: "21"
+          cache: gradle
+
+      - name: Version and notes
+        id: meta
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          version=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "notes=docs/release-notes/$version.md" >> "$GITHUB_OUTPUT"
+          if [ "$DRY_RUN" != "true" ]; then
+            if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
+              echo "::error::v$version is already released; raise versionName and versionCode first"
+              exit 1
+            fi
+            if [ ! -f "docs/release-notes/$version.md" ]; then
+              echo "::error::Write the release notes in docs/release-notes/$version.md first"
+              exit 1
+            fi
+          fi
+
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::The repository secret $name is not set"
+              exit 1
+            fi
+          done
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/release.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } >> local.properties
+
+      - name: Test, lint and build
+        run: |
+          export SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
+          ./gradlew --stacktrace testDebugUnitTest lintDebug assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk LiteCast.apk
+          rm -f "$RUNNER_TEMP/release.jks" local.properties
+
+      - name: Check the signature
+        run: |
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$apksigner" verify --min-sdk-version 21 --print-certs LiteCast.apk > signer.txt
+          if ! grep -qi "certificate SHA-256 digest: $EXPECTED_CERT" signer.txt; then
+            echo "::error::LiteCast.apk is not signed with LiteCast's release key"
+            exit 1
+          fi
+          sha256sum LiteCast.apk | cut -d' ' -f1 > LiteCast.apk.sha256
+          echo "Signed with the release key; SHA-256 $(cat LiteCast.apk.sha256)"
+
+      # The asset keeps one name in every release, so releases/latest/download/LiteCast.apk
+      # (the README's download link) always points at the newest version
+      - name: Publish
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          NOTES: ${{ steps.meta.outputs.notes }}
+        run: |
+          {
+            cat "$NOTES"
+            echo
+            echo "SHA-256（LiteCast.apk）：\`$(cat LiteCast.apk.sha256)\`"
+          } > body.md
+          gh release create "$TAG" LiteCast.apk --target "$GITHUB_SHA" --title "轻投 $VERSION" --notes-file body.md

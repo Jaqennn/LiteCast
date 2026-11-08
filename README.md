@@ -264,7 +264,9 @@ cd LiteCast
 
 为了支持 Android 5.x，Compose 停在 1.9（BOM 2025.11.01）、Media3 停在 1.8：这两个库更新的版本要求 Android 6.0。升级它们之前先确认 minSdk 还是 21。
 
-**发布签名**：在 `local.properties` 里写上
+**发布新版本**：签名钥匙存在仓库的加密 Secrets 里（`KEYSTORE_BASE64` 是 `base64 -w0 litecast-release.jks` 的输出，另外三个是 `KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`）。改好 `app/build.gradle.kts` 里的 `versionCode` 和 `versionName`，把发布说明写进 `docs/release-notes/<版本号>.md`，推到 main，然后在 Actions → Release → Run workflow 运行一次：它会跑测试、签名打包、核对证书指纹，再创建 `v<版本号>` 发布页，附上 `LiteCast.apk` 和它的 SHA-256。勾选 dry run 只打包检查、不发布。每个版本都叫 `LiteCast.apk`，README 里的下载链接才会一直指向最新版。
+
+在自己电脑上打包：在 `local.properties` 里写上
 
 ```properties
 storeFile=/绝对路径/litecast-release.jks
@@ -273,9 +275,7 @@ keyAlias=litecast
 keyPassword=...
 ```
 
-然后 `./gradlew assembleRelease`，把 `app/build/outputs/apk/release/app-release.apk` 改名成 `LiteCast.apk` 上传到发布页（每个版本都用这个文件名，README 里的下载链接才会一直指向最新版）。
-
-GitHub Actions 每次推送都会编译和测试。如果在仓库 Settings → Secrets 里配了 `KEYSTORE_BASE64`（`base64 -w0 litecast-release.jks` 的输出）、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`，推送 `v*` 标签时还会自动签名并发布；没配时只编译测试，APK 手动上传。**签名文件不要提交到仓库，也要备份好**：换了签名，用户就没法覆盖升级。
+然后 `./gradlew assembleRelease`。GitHub Actions 每次推送都会编译和测试，这一步用不到签名钥匙。**签名文件不要提交到仓库，也要备份好**：换了签名，用户就没法覆盖升级。
 
 **合并上游更新**
 
