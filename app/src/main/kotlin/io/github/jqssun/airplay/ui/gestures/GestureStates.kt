@@ -1,5 +1,6 @@
 package io.github.jqssun.airplay.ui.gestures
 
+import android.os.Build
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -134,7 +135,7 @@ class SeekGestureState(private val viewModel: MainViewModel) {
 
 @Stable
 class ServerVolumeState(private val context: Context) {
-    private val audioManager = context.getSystemService(AudioManager::class.java)
+    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager // LiteCast: Android 5.x
     private val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
 
     var percentage by mutableIntStateOf(_current())
@@ -172,7 +173,9 @@ class ServerVolumeState(private val context: Context) {
     }
 
     private fun _isHeadsetOn(): Boolean =
-        audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { device ->
+        // LiteCast: the device list exists from Android 6.0
+        if (Build.VERSION.SDK_INT < 23) @Suppress("DEPRECATION") (audioManager.isWiredHeadsetOn || audioManager.isBluetoothA2dpOn)
+        else audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { device ->
             device.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
                 device.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
                 device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||

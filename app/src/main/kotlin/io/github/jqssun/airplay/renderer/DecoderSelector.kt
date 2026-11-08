@@ -168,7 +168,8 @@ class DecoderSelector(private val ctx: Context) {
     }
 
     private fun _rateSupported(caps: VideoCapabilities, w: Int, h: Int, fps: Int) = try {
-        caps.getAchievableFrameRatesFor(w, h)?.let { fps <= it.upper }
+        // LiteCast: measured frame rates exist from Android 6.0; older TVs only have the declared limits
+        (if (Build.VERSION.SDK_INT >= 23) caps.getAchievableFrameRatesFor(w, h)?.let { fps <= it.upper } else null)
             ?: caps.areSizeAndRateSupported(w, h, fps.toDouble())
     } catch (_: IllegalArgumentException) {
         false

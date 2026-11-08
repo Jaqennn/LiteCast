@@ -70,13 +70,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSourceBitmapLoader
-import androidx.media3.ui.compose.material3.MiniController
-import androidx.media3.ui.compose.material3.buttons.NextButton
-import androidx.media3.ui.compose.material3.buttons.PlayPauseButton
-import androidx.media3.ui.compose.material3.buttons.PreviousButton
-import androidx.media3.ui.compose.material3.indicator.DurationText
-import androidx.media3.ui.compose.material3.indicator.PositionText
-import androidx.media3.ui.compose.material3.indicator.ProgressSlider
+// LiteCast: MiniController, the buttons and the progress row come from PlayerControls.kt (Android 5.x)
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -877,7 +871,7 @@ private fun AudioMiniController(viewModel: MainViewModel, visible: Boolean, onCl
     val context = LocalContext.current
     MiniController(
         player,
-        bitmapLoader = remember { DataSourceBitmapLoader.Builder(context).build() },
+        bitmapLoader = remember { DataSourceBitmapLoader(context) }, // LiteCast: Media3 1.8 has no Builder
         onClick = onClick
     )
 }

@@ -2,7 +2,8 @@
 agp = "9.4.1"
 kotlin = "2.2.10"
 ksp = "2.3.12"
-compose-bom = "2026.05.00"
+# LiteCast: last Compose (1.9.5) and Media3 (1.8.1) that still run on Android 5.0; newer need 6.0
+compose-bom = "2025.11.01"
 hilt = "2.60.1"
 hilt-navigation = "1.2.0"
 lifecycle = "2.9.4"
@@ -10,7 +11,7 @@ activity-compose = "1.9.3"
 core-ktx = "1.16.0"
 datastore = "1.1.1"
 coroutines = "1.9.0"
-media3 = "1.11.1"
+media3 = "1.8.1"
 oboe = "1.9.3"
 desugar-jdk-libs = "2.1.5"
 
@@ -48,7 +49,7 @@ roborazzi-compose = { group = "io.github.takahirom.roborazzi", name = "roborazzi
 compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 media3-transformer = { group = "androidx.media3", name = "media3-transformer", version.ref = "media3" }
-media3-ui-compose-material3 = { group = "androidx.media3", name = "media3-ui-compose-material3", version.ref = "media3" }
+media3-ui-compose = { group = "androidx.media3", name = "media3-ui-compose", version.ref = "media3" }
 
 kotlinx-coroutines = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 

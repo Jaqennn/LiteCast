@@ -11,6 +11,7 @@
 
 package io.github.litecast.dlna
 
+import android.os.Build
 import android.content.Context
 import android.media.AudioManager
 import android.net.ConnectivityManager
@@ -164,7 +165,8 @@ class DlnaRenderer(
 
     private fun lanAddress(): InetAddress? {
         val networks = connectivity.allNetworks.toMutableList()
-        connectivity.activeNetwork?.let { active -> networks.remove(active); networks.add(0, active) }
+        // activeNetwork needs Android 6.0; on 5.x the order of allNetworks has to do
+        if (Build.VERSION.SDK_INT >= 23) connectivity.activeNetwork?.let { active -> networks.remove(active); networks.add(0, active) }
         for (n in networks) {
             val caps = connectivity.getNetworkCapabilities(n) ?: continue
             if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) continue
@@ -216,7 +218,11 @@ class DlnaRenderer(
                 val mute = args["DesiredMute"]?.trim()?.lowercase()
                 if (mute !in setOf("0", "1", "true", "false", "yes", "no")) throw Dlna.Fault(402, "Invalid mute value")
                 val on = mute == "1" || mute == "true" || mute == "yes"
-                audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, if (on) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE, 0)
+                if (Build.VERSION.SDK_INT >= 23) {
+                    audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, if (on) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE, 0)
+                } else {
+                    muteByVolume(on)
+                }
             }
             "ListPresets" -> return Dlna.values("CurrentPresetNameList", "FactoryDefaults")
             "SelectPreset" -> Unit
@@ -230,7 +236,26 @@ class DlnaRenderer(
         return if (max == 0) 0 else Math.round(100f * audio.getStreamVolume(AudioManager.STREAM_MUSIC) / max)
     }
 
-    private fun isMuted() = runCatching { audio.isStreamMute(AudioManager.STREAM_MUSIC) }.getOrDefault(false)
+    // Android 5.x has no ADJUST_MUTE, and setStreamMute stacks every call (two mutes need two
+    // unmutes), so mute by turning the volume to 0 and back
+    @Volatile private var volumeBeforeMute = -1
+
+    private fun muteByVolume(on: Boolean) {
+        val current = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+        if (on && current > 0) {
+            volumeBeforeMute = current
+            audio.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+        } else if (!on && current == 0) {
+            val restore = volumeBeforeMute.takeIf { it > 0 } ?: (audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) / 2)
+            audio.setStreamVolume(AudioManager.STREAM_MUSIC, restore, 0)
+            volumeBeforeMute = -1
+        }
+    }
+
+    private fun isMuted() = runCatching {
+        if (Build.VERSION.SDK_INT >= 23) audio.isStreamMute(AudioManager.STREAM_MUSIC)
+        else audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
+    }.getOrDefault(false)
 
     companion object {
         const val PREFERRED_PORT = 49595

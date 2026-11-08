@@ -34,7 +34,7 @@ android {
     defaultConfig {
         // LiteCast: own application id so it installs next to upstream; namespace stays upstream's
         applicationId = "io.github.litecast"
-        minSdk = 23
+        minSdk = 21
         targetSdk = 37
         versionCode = 2
         versionName = "0.1.1"
@@ -148,7 +148,7 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.exoplayer.dash)
-    implementation(libs.media3.ui.compose.material3)
+    implementation(libs.media3.ui.compose)
     implementation(libs.media3.transformer)
     implementation(libs.kotlinx.coroutines)
     implementation(libs.oboe)

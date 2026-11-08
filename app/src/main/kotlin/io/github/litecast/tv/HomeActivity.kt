@@ -5,6 +5,7 @@
 
 package io.github.litecast.tv
 
+import android.os.Build
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -452,7 +453,8 @@ internal fun SettingsContent(
 
 // ---------------------------------------------------------------------------------------- helpers
 
-internal fun canDrawOverlays(context: Context): Boolean = Settings.canDrawOverlays(context)
+// Before Android 6.0 the permission is granted when the app is installed
+internal fun canDrawOverlays(context: Context): Boolean = Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(context)
 
 internal fun openOverlaySettings(context: Context) {
     val pkg = Uri.parse("package:${context.packageName}")
@@ -469,9 +471,12 @@ internal fun openOverlaySettings(context: Context) {
 
 private fun lanIp(context: Context): String {
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-    val network = cm.activeNetwork ?: return ""
-    return cm.getLinkProperties(network)?.linkAddresses
-        ?.map { it.address }
-        ?.firstOrNull { it is Inet4Address && !it.isLoopbackAddress && !it.isLinkLocalAddress }
+    // activeNetwork needs Android 6.0; on 5.x take the first network that has a LAN address
+    val networks = if (Build.VERSION.SDK_INT >= 23) listOfNotNull(cm.activeNetwork) else cm.allNetworks.toList()
+    return networks.asSequence()
+        .mapNotNull { cm.getLinkProperties(it) }
+        .flatMap { it.linkAddresses.asSequence() }
+        .map { it.address }
+        .firstOrNull { it is Inet4Address && !it.isLoopbackAddress && !it.isLinkLocalAddress }
         ?.hostAddress.orEmpty()
 }
