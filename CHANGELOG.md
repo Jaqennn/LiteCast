@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0
+
+- Runs on Android 5.0 and later (was 6.0), so older TVs and boxes can install it. Compose stays on
+  1.9 and Media3 on 1.8, the last versions that support Android 5; the handful of Android 6.0
+  calls (display mode, decoder frame rates, audio devices, active network, mute, overlay
+  permission) have fallbacks, and the AirPlay music screen's controls no longer need
+  media3-ui-compose-material3
+- On a TV whose built-in casting app holds the DLNA discovery port (乐播 on Sony and many others),
+  LiteCast announces itself every 4 seconds instead of every 20, so phones list it within seconds
+- Signed with a new key: uninstall 0.1.x before installing 0.2.0
+- The release file is always called LiteCast.apk, so the README's download link always gets the
+  newest version
+- Install guide rewritten: what the app solves, what each phone can cast, which Android versions
+  work, which file to download, three ways to install (USB drive, an AI agent, adb) and how to
+  undo; docs/agent.md walks an AI agent through installing and checking it; issue forms for device
+  reports and bugs
+
 ## 0.1.1
 
 - The player shows the resolution it is really playing (720P / 1080P / 2K / 4K) next to the

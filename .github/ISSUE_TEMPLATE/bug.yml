@@ -1,0 +1,46 @@
+name: 问题反馈 / Bug report
+description: 投屏失败、卡顿、手机上找不到电视、闪退等 / Casting fails, stutters, the TV doesn't show up, crashes
+title: "[问题] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先看看 [常见问题](https://github.com/Jaqennn/LiteCast#常见问题)，找不到电视、清晰度不高这类情况那里有解决办法。
+        Please check the [FAQ](https://github.com/Jaqennn/LiteCast/blob/main/README.en.md#faq) first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: 发生了什么 / What happens
+      description: 怎么操作的、看到了什么、本来应该怎样；能截图或拍照更好 / What you did, what you saw, what you expected; photos help
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: 电视品牌和型号 / TV brand and model
+      placeholder: 索尼 KD-65X90J
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: 电视的安卓版本 / Android version
+      placeholder: Android 10
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 轻投版本 / LiteCast version
+      placeholder: "0.2.0"
+  - type: input
+    id: phone
+    attributes:
+      label: 手机型号和系统 / Phone and OS
+      placeholder: iPhone 15，iOS 26
+  - type: input
+    id: app
+    attributes:
+      label: 怎么投的 / How you cast
+      description: 屏幕镜像，还是哪个 App 的投屏按钮 / Screen mirroring, or the cast button of which app
+      placeholder: B 站的投屏按钮

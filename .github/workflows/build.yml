@@ -27,7 +27,11 @@ jobs:
       - name: Unit tests and lint
         run: ./gradlew --stacktrace testDebugUnitTest lintDebug
 
+      # Release APKs are signed with a key that is not in this repository. If the four secrets
+      # below are set, a v* tag builds, signs and publishes LiteCast.apk; without them the tag
+      # build only checks that everything compiles and the maintainer uploads the signed APK.
       - name: Signing key
+        id: signing
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -36,8 +40,9 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::error::Add the KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD secrets to sign releases"
-            exit 1
+            echo "::notice::No signing secrets: building a debug APK only; the release APK is uploaded by hand"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
           {
@@ -46,14 +51,17 @@ jobs:
             echo "keyAlias=$KEY_ALIAS"
             echo "keyPassword=$KEY_PASSWORD"
           } >> local.properties
+          echo "signed=true" >> "$GITHUB_OUTPUT"
 
       - name: Build APK
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
         run: |
           export SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
           version=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          if [ "$SIGNED" = "true" ]; then
             ./gradlew --stacktrace assembleRelease
-            cp app/build/outputs/apk/release/app-release.apk "LiteCast-$version.apk"
+            cp app/build/outputs/apk/release/app-release.apk LiteCast.apk
           else
             ./gradlew --stacktrace assembleDebug
             cp app/build/outputs/apk/debug/app-debug.apk "LiteCast-$version-debug.apk"
@@ -63,11 +71,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: LiteCast
-          path: LiteCast-*.apk
+          path: LiteCast*.apk
 
+      # The asset keeps one name in every release, so releases/latest/download/LiteCast.apk
+      # (the README's download link) always points at the newest version
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.signing.outputs.signed == 'true'
         uses: softprops/action-gh-release@v3
         with:
-          files: LiteCast-*.apk
-          generate_release_notes: true
+          files: LiteCast.apk

@@ -1,0 +1,1 @@
+Runs on Android 5.0 and later; on TVs with a pre-installed casting app, phones find LiteCast within seconds; rewritten install guide. New signing key: uninstall 0.1.x first.

@@ -1,64 +1,149 @@
+<div align="center">
+
+<img src="fastlane/metadata/android/en-US/images/icon.png" width="96" alt="轻投图标">
+
 # 轻投 LiteCast
 
-**免费、无广告、开源的电视投屏接收端。** 装在电视上以后，iPhone 的屏幕镜像、AirPlay 视频和音乐、各种视频 App 里的「TV / 投屏」按钮（DLNA）都能直接投到电视，不用登录，不限时长，也不弹会员广告。
+**免费、没有广告的电视投屏。** 装在安卓电视上，苹果手机和安卓手机都能投过来。
 
-最初是为了国行索尼 X90J 做的：这台电视自带的投屏走的是乐播，用一会儿就提示收费。轻投在大多数 Android TV / 安卓电视上都能用（Android 6.0 及以上，ARM 芯片）。
+[下载 APK](https://github.com/Jaqennn/LiteCast/releases/latest/download/LiteCast.apk) · [安装方法](#安装) · [恢复原样](#恢复原样) · [常见问题](#常见问题) · [English](README.en.md)
 
-**适用**：索尼 Bravia、TCL、海信、小米等安卓系统的电视和电视盒子，Android TV / Google TV 均可。目前在国行索尼 X90J 上实测过，其他型号欢迎在 [Issues](https://github.com/Jaqennn/LiteCast/issues) 反馈。
-
-A free, ad-free **AirPlay + DLNA casting receiver for Android TV / Sony Bravia**: iPhone screen mirroring and the cast button of video apps, no account, no time limit. [English README](README.en.md)
-
-[下载 APK](https://github.com/Jaqennn/LiteCast/releases/latest) · [常见问题](#常见问题) · [拾影 ShiYing：Windows 视频下载器](https://github.com/Jaqennn/ShiYing)
+</div>
 
 | 主页 | 视频投屏 | AirPlay 音乐 |
 |---|---|---|
 | ![主页](docs/screenshots/home.png) | ![视频](docs/screenshots/player-video.png) | ![音乐](docs/screenshots/player-music.png) |
 
+## 解决什么问题
+
+- **电视自带的投屏开始收费**：国行索尼等电视预装的乐播投屏，用一会儿就弹窗要开会员。轻投最早就是为一台国行索尼 X90J 做的。
+- **苹果手机投不了安卓电视**：iPhone 的屏幕镜像只认 AirPlay，大多数安卓电视不支持。
+- **第三方投屏软件**要登录、有广告、限时长。
+
+## 轻投的特点
+
+- 免费、没有广告，不用登录，不限时长；代码开源，谁都能查
+- 苹果和安卓手机都能投：AirPlay（屏幕镜像、视频、音乐）和 DLNA（视频 App 的投屏按钮）同时开着，不用切换模式
+- 老电视也能用：Android 5.0 及以上的电视、盒子、投影仪
+- 装一次就行：开机自动在后台待命，手机一投，画面自己弹出来，投完自己关掉
+- 不碰电视原来的东西：不改系统设置，能和乐播同时存在，卸载就恢复原样
+- 安装包不到 10 MB，新老电视、32 位和 64 位芯片都用这一个
+
 ## 能投什么
 
-| 来源 | 能不能投 | 说明 |
-|---|---|---|
-| iPhone / iPad / Mac **屏幕镜像** | ✅ | 控制中心 → 屏幕镜像，画面和声音一起过来 |
-| iPhone 上的 **AirPlay 视频**（相册、Safari，以及支持 AirPlay 的视频 App） | ✅ | 电视自己拉流播放，手机变成遥控器 |
-| **AirPlay 音乐**（Apple Music 等） | ✅ | 显示封面、歌名和进度，遥控器可切歌 |
-| 视频 App 的 **TV / 投屏 按钮**（DLNA，安卓和 iPhone 都行） | ✅ 大多数 | 推过来的是视频地址，由电视播放；B 站、爱奇艺、腾讯视频、优酷等的投屏按钮都走这个，个别 App 或会员内容会限制第三方设备 |
-| 有版权保护（DRM）的内容：Apple TV App、Netflix、Disney+ 等 | ❌ | 只给认证设备；镜像时也会黑屏 |
-| 只走私有协议的投屏：乐播「云投屏」、华为 Cast+、小米妙播，或要求电视装官方 App 才能投的内容 | ❌ | 协议不公开 |
-| 安卓手机系统自带的「无线投屏 / 屏幕镜像」（Miracast） | ❌ | 需要系统级 Wi-Fi Direct 权限，普通 App 做不到；索尼等电视一般自带「屏幕镜像」可以接 |
-| Google Cast（Chromecast） | ❌ | 需要 Google 认证 |
+**苹果手机 / iPad / Mac**
 
-另外：有的 App 只给会员投高清，或者对投屏单独限制清晰度，这是 App 自己的规则，接收端改变不了；投过来的链接如果带时效，过期了需要在手机上重新投。
+| 投屏方式 | 在手机上怎么投 | 能不能投 |
+|---|---|---|
+| 屏幕镜像 | 控制中心 → 屏幕镜像 → 选「电视名 · 轻投」 | ✅ 画面和声音一起过来 |
+| AirPlay 视频 | 相册、Safari，以及支持 AirPlay 的 App 里点 AirPlay 图标 | ✅ 电视自己播放，手机可以锁屏 |
+| AirPlay 音乐 | Apple Music 等音乐 App 里点 AirPlay 图标 | ✅ 显示封面、歌名和进度 |
+| 视频 App 的「TV / 投屏」按钮 | B 站、爱奇艺、腾讯视频、优酷等，播放时点投屏图标 | ✅ 大多数（DLNA） |
+
+**安卓手机**
+
+| 投屏方式 | 在手机上怎么投 | 能不能投 |
+|---|---|---|
+| 视频 App 的「TV / 投屏」按钮（DLNA） | B 站、爱奇艺、腾讯视频、优酷、芒果 TV、各类直播 App 等，播放时点投屏图标 → 选「电视名 · 轻投」 | ✅ 大多数 |
+| 系统自带的「无线投屏 / 屏幕镜像」（Miracast） | 下拉菜单里的投屏开关 | ❌ 要系统级权限，普通 App 做不到；不少电视自带「屏幕镜像」可以接 |
+| 华为 Cast+、小米妙播等手机厂商自己的投屏 | — | ❌ 协议不公开 |
+
+**投不了的**
+
+- 有版权保护（DRM）的内容：Netflix、Disney+、Apple TV App 等，镜像时也会黑屏
+- 乐播「云投屏」、Google Cast（Chromecast），以及要求电视装官方 App 才能投的内容
+
+清晰度由 App 决定：DLNA 只是把视频地址交给电视，比如 B 站给第三方设备最高 720P，抖音最高 1080P，会员内容有的只给自家设备投高清。这是 App 的规则，接收端改变不了。
+
+## 支持哪些电视
+
+- **系统**：Android 5.0 及以上。各品牌的安卓电视、Android TV / Google TV、电视盒子、投影仪都可以
+- **芯片**：ARM（市面上的电视几乎都是）
+- **不支持**：Android 4.4 及更老的系统；不是安卓的系统，比如 LG webOS、三星 Tizen。华为、荣耀智慧屏还没人试过
+- **怎么看安卓版本**：一般在电视的 设置 → 关于 →「版本信息」或「Android 版本」
+
+已实测的电视：
+
+| 电视 | 系统 | 情况 |
+|---|---|---|
+| 索尼 X90J 国行 | Android 10 | ✅ 作者自用：屏幕镜像、AirPlay 视频和音乐、视频 App 投屏都正常 |
+
+Android 5.0–5.1 从 0.2.0 起支持，还没有真机实测。你的电视能用或不能用，都欢迎 [告诉大家](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml)，会整理进这张表。
+
+## 下载
+
+最简单：点 [下载 LiteCast.apk](https://github.com/Jaqennn/LiteCast/releases/latest/download/LiteCast.apk)，这就是要装到电视上的文件。
+
+也可以打开 [发布页](https://github.com/Jaqennn/LiteCast/releases/latest)，在版本说明下面的「Assets」里点 **LiteCast.apk**。旁边的「Source code (zip)」「Source code (tar.gz)」是源代码，不用下载。
 
 ## 安装
 
-**用 U 盘（最简单）**
+三种方法选一种。
 
-1. 到 [Releases](../../releases) 下载 `LiteCast-x.y.z.apk`，拷到 U 盘。
-2. U 盘插到电视上，用电视自带的文件管理器 / 应用商店的「本地安装」打开这个 APK。
-3. 如果提示不允许安装未知来源的应用，按提示给打开 APK 的那个应用开权限。
-   一般在 *设置 → 设备偏好设置 → 安全性和限制 → 未知来源*，不同电视叫法略有不同。
+### 方法一：U 盘（最简单）
 
-**用 adb（电脑和电视在同一个网络）**
+1. 把 LiteCast.apk 拷到 U 盘，插到电视上。
+2. 用电视自带的文件管理器（有的叫「媒体中心」「本地播放」「我的文件」）找到 LiteCast.apk，按确认键打开。
+3. 如果提示不允许安装未知来源的应用，按提示去设置里允许你用来打开 APK 的那个应用安装应用，再打开一次。不同电视位置不一样，常见的是：
+   - 索尼和其他 Android TV：设置 → 设备偏好设置 → 安全性和限制 → 未知来源
+   - 小米：设置 → 账号与安全 → 安装未知来源的应用
+4. 装好后，电视的应用列表里会出现「轻投」。
+
+### 方法二：让 AI 帮你装
+
+会用能在电脑上运行命令的 AI（Claude Code、Codex、豆包电脑版、千问电脑版、Trae、WorkBuddy 等）的话，把下面这段发给它，它会一步步装好并验收：
+
+```text
+请帮我把开源投屏软件「轻投 LiteCast」装到我的电视上。
+电视 IP：<电视IP>
+
+安装说明在这里：https://github.com/Jaqennn/LiteCast/blob/main/docs/agent.md
+（打不开时用 https://raw.githubusercontent.com/Jaqennn/LiteCast/main/docs/agent.md ）
+
+请先完整读完安装说明再动手，然后在我的电脑上亲自运行命令，不要只把步骤告诉我。需要我在电视上操作时提醒我。
+最后按说明里的「验收」，把命令的原始输出原样贴给我。
+```
+
+电脑和电视要连同一个网络，电视要打开 ADB 调试（见下面方法三的表，AI 也会告诉你）。电视的 IP 在 设置 → 网络 里能看到。手机上的 AI 聊天只会把步骤告诉你，不会替你执行。
+
+### 方法三：电脑上用 adb
+
+先在电视上打开 ADB 调试：
+
+| 电视 | 怎么打开 ADB |
+|---|---|
+| 索尼、海信、其他 Android TV / Google TV | 设置 → 设备偏好设置 → 关于 → 连续按「内部版本号」7 次，再到 开发者选项 打开「USB 调试」（也可能叫「网络调试」） |
+| 小米 / Redmi | 设置 → 关于 → 连续按「产品型号」，直到提示进入开发者模式；再到 设置 → 账号与安全，打开「ADB 调试」 |
+| TCL / 雷鸟 | 设置 → 关于 → 本机信息，快速依次按遥控器「上、下、左、右」，在底部出现的「更多」里打开 ADB |
+
+各品牌的方法参考了 [Aerial](https://github.com/pengchujin/aerial-tv) 项目整理的用户实测说明。只有「无线调试」的 Android 11+ 电视（比如索尼 BRAVIA 的 Android 14）要先配对，见 [docs/agent.md](docs/agent.md) 第 2 步。
+
+然后在电脑上运行：
 
 ```bash
-# 电视：设置 → 设备偏好设置 → 关于 → 连按「版本号」7 次打开开发者选项，再打开「USB 调试 / 网络调试」
-adb connect 电视的IP
-adb install -r LiteCast-x.y.z.apk
+adb connect 电视的IP:5555
+adb install -r LiteCast.apk
+adb shell appops set io.github.litecast SYSTEM_ALERT_WINDOW allow
+adb shell am start -n io.github.litecast/io.github.litecast.tv.HomeActivity
 ```
+
+第三条让投屏画面能盖在别的节目上，Android 5.x 不需要，报错可以忽略。装不上时按 [docs/agent.md](docs/agent.md) 里「第 5 步」的说明处理。
+
+### 从 0.1.x 升级
+
+0.2.0 换了新的签名，不能直接覆盖 0.1.x：先在 设置 → 应用 → 轻投 里卸载旧版，再装新版（在轻投里改过的电视名要重新改一次）。以后的版本都可以直接覆盖安装，设置会保留。
 
 ## 第一次使用
 
-1. 打开「轻投」，主页上大字显示的就是电视的名字（默认是「电视名 · 轻投」，可以点「改名」）。两个状态点变绿就可以投了。
-2. **建议**：按主页提示点「去开启」，给轻投打开 **显示在其他应用上层**。
-   这样你在看别的节目时，手机一投屏，画面会直接弹出来；不开的话，需要先回到轻投再投。
-   - Android TV：*设置 → 应用 → 特殊应用权限 → 显示在其他应用上层*
-   - Google TV：*设置 → 隐私 → 特殊应用权限 → 显示在其他应用上层*
+1. 在电视的应用列表里打开「轻投」。主页上的大字就是电视在手机上显示的名字（默认是「电视名 · 轻投」，可以点「改名」）。两个状态点变绿就可以投了。
+2. 建议按主页提示点「去开启」，给轻投打开「显示在其他应用上层」。这样你在看别的节目时，手机一投屏，画面会直接弹出来；不开的话，要先回到轻投再投。
+   - Android TV：设置 → 应用 → 特殊应用权限 → 显示在其他应用上层
+   - Google TV：设置 → 隐私 → 特殊应用权限 → 显示在其他应用上层
    - 都找不到：`adb shell appops set io.github.litecast SYSTEM_ALERT_WINDOW allow`
-3. 手机连同一个 Wi-Fi：
-   - **iPhone 镜像**：控制中心 → 屏幕镜像 → 选电视的名字
-   - **视频 App**：播放时点 TV / 投屏 图标 → 选电视的名字
+   - Android 5.x 没有这个开关，也不需要
+3. 手机和电视连同一个 Wi-Fi，按上面「能投什么」里的方法投。
 
-之后不用再管它：轻投在后台安静待命（只是在局域网里等手机来找它），电视重启后也会自动启动。投屏结束后播放界面会自己关掉，回到你原来看的东西。
+之后就不用管它了：轻投在后台安静待命（只是在局域网里等手机来找它），电视重启后也会自己启动。投屏结束后播放界面会自己关掉，回到你原来看的东西。
 
 ## 遥控器
 
@@ -70,14 +155,29 @@ adb install -r LiteCast-x.y.z.apk
 
 ## 和电视自带的乐播共存
 
-两个可以同时开着，手机列表里会出现两个名字：带「· 轻投」的是这个应用。轻投会自动避开被占用的端口，不需要先关乐播；只是乐播占着 DLNA 的发现端口时，轻投要靠定时广播让手机看到，最多要等二十秒左右才出现在列表里。
+两个可以同时开着，手机列表里会出现两个名字：带「· 轻投」的是轻投。轻投会自动避开被占用的端口，不需要先关乐播；乐播占着 DLNA 的发现端口时，手机列表可能要等几秒才出现轻投。
 
-不想看到乐播的话，可以在 *设置 → 应用* 里找到乐播投屏，选「停用」或者关掉它的自启动（能不能停用取决于电视系统）。
+不想看到乐播的话，可以在 设置 → 应用 里找到乐播投屏，选「停用」或者关掉它的自启动（能不能停用取决于电视系统）。
+
+## 恢复原样
+
+轻投不改电视的系统设置，也不停用任何应用，所以卸载就是完全还原：
+
+- 电视上：设置 → 应用 → 轻投 → 卸载（有的电视在应用列表里长按「轻投」也能卸载）
+- 电脑上：`adb uninstall io.github.litecast`
+
+如果你按上一节停用过乐播，想恢复：设置 → 应用 →（显示系统应用）→ 乐播投屏 → 启用。
 
 ## 常见问题
 
+**我的电视能装吗？**
+安卓系统、Android 5.0 及以上就能装，见上面「支持哪些电视」。装不上时把提示拍下来 [反馈](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml)。
+
+**发布页上那么多文件，下载哪个？**
+只下载 LiteCast.apk。「Source code」是源代码，给开发者用的。
+
 **索尼电视投屏提示收费（乐播）怎么办？**
-装上轻投，投屏时选带「· 轻投」的那个名字就行，不登录、不限时长、没有会员弹窗。乐播可以留着不管，两个能同时开着，详见上面「和电视自带的乐播共存」。
+装上轻投，投屏时选带「· 轻投」的那个名字就行，不登录、不限时长、没有会员弹窗。乐播可以留着不管，两个能同时开着。
 
 **iPhone 怎么投屏到安卓电视 / 索尼电视？**
 电视上打开过一次轻投后，iPhone 和电视连同一个 Wi-Fi：整个屏幕用「控制中心 → 屏幕镜像」；看视频用 App 里的 AirPlay 或投屏按钮，这样手机可以锁屏。
@@ -91,17 +191,24 @@ adb install -r LiteCast-x.y.z.apk
 - 手机开着 VPN 时可能看不到局域网设备。
 - 打开轻投看看两个状态是不是绿的；必要时在 设置 → 接收投屏 关掉再打开。
 
-**投屏了但电视没反应** — 看上面第 2 步，开「显示在其他应用上层」，或者打开轻投点「回到投屏」。
+**投屏了但电视没反应** — 看「第一次使用」第 2 步，开「显示在其他应用上层」，或者打开轻投点「回到投屏」。
 
-**投屏清晰度不高** — 清晰度是 App 决定的：DLNA 只是把视频地址交给电视。B 站给第三方设备最高 720P，更高要用它的「官方投屏」（接收端是电视上的「云视听小电视」）；抖音最高给 1080P。播放时按遥控器 ↑，左上角会显示实际清晰度（如「1080P」「4K」）。
+**投屏清晰度不高** — 清晰度是 App 决定的（见「能投什么」最后一段）。B 站更高的清晰度要用它的「官方投屏」（接收端是电视上的「云视听小电视」）。播放时按遥控器 ↑，左上角会显示实际清晰度（如「1080P」「4K」）。
 
 **油管一直加载，或提示连不上视频服务器** — 用 AirPlay 推油管视频时，视频是电视直接从 YouTube 服务器下载的，手机只负责遥控。电视所在的网络访问不了 YouTube 就放不了：可以改用屏幕镜像，或者让电视的网络也能访问（在路由器上统一处理，或者在电视的 Wi-Fi 设置里填一个局域网里的代理；轻投会让本机和局域网地址绕过代理，不影响投屏）。
 
 **视频一直转圈或提示失败** — 网络问题会自动重试 3 次；如果提示链接失效，是手机给的地址过期或被拒绝了，在手机上重新投一次。DRM 视频放不了。
 
-**镜像卡顿** — 尽量让手机连 5 GHz Wi-Fi，电视用网线；也可以在 设置 → 高级设置 里降低分辨率或帧率。
+**镜像卡顿** — 尽量让手机连 5 GHz Wi-Fi，电视用网线；也可以在 设置 → 高级设置 里降低分辨率或帧率。老电视的芯片解码能力弱，镜像时建议用 1080P。
 
 **安全吗** — 不需要账号，不收集任何数据，没有广告。投屏协议本身没有密码（AirPlay 可以在设置里打开配对码），所以请只在自己家里的网络里使用，不要把电视的端口映射到公网。
+
+## 反馈
+
+- [机型反馈](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml)：你的电视能用还是不能用
+- [问题反馈](https://github.com/Jaqennn/LiteCast/issues/new?template=bug.yml)：投屏失败、卡顿、找不到电视、闪退等
+
+写上电视型号、安卓版本、手机型号和用的哪个 App，能更快找到原因。
 
 ## 工作原理
 
@@ -128,7 +235,7 @@ flowchart LR
 
 - **AirPlay**：[jqssun/android-airplay-server](https://github.com/jqssun/android-airplay-server)（基于 [UxPlay](https://github.com/FDH2/UxPlay)）——镜像、AirPlay 视频、音乐、配对码都来自它。本仓库保留了它的完整提交历史，改动的地方都标了 `LiteCast:` 注释，方便以后合并上游更新。
 - **DLNA**：渲染器（SSDP、HTTP/SOAP、事件订阅、格式识别）移植自 [小狗便利店投屏 puppy-store-cast](https://github.com/leiz56638111-create/puppy-store-cast)，并放宽了对各家 App 不规范请求的容忍度。
-- **电视端体验**：常驻接收、开机自启、投屏自动弹出等做法参考了 [sony-airplay-tv](https://github.com/Reasno/sony-airplay-tv) 和 [SonyCast-AndroidTV](https://github.com/Xecxes/SonyCast-AndroidTV)。
+- **电视端体验**：常驻接收、开机自启、投屏自动弹出等做法参考了 [sony-airplay-tv](https://github.com/Reasno/sony-airplay-tv) 和 [SonyCast-AndroidTV](https://github.com/Xecxes/SonyCast-AndroidTV)；安装说明和给 AI 的安装流程参考了 [Aerial](https://github.com/pengchujin/aerial-tv)。
 
 ```
 app/src/main/kotlin/io/github/jqssun/airplay/   上游 AirPlay 接收端（改动处标 LiteCast:）
@@ -137,6 +244,7 @@ app/src/main/java/io/github/litecast/dlna/      DLNA 协议层（移植自 小�
 app/src/main/kotlin/io/github/litecast/dlna/    AVTransport 状态机、DLNA 渲染器
 app/src/main/kotlin/io/github/litecast/tv/      电视界面：主页、设置、播放器
 app/src/test/                                   协议单元测试、socket 集成测试、界面截图
+docs/agent.md                                   给 AI Agent 的安装说明
 ```
 
 ## 从源码构建
@@ -154,6 +262,8 @@ cd LiteCast
 
 默认打包 `arm64-v8a` 和 `armeabi-v7a`（很多电视是 64 位芯片配 32 位系统，两个都要）；加 `-PwithX86` 会多打一个 x86_64，给模拟器用。
 
+为了支持 Android 5.x，Compose 停在 1.9（BOM 2025.11.01）、Media3 停在 1.8：这两个库更新的版本要求 Android 6.0。升级它们之前先确认 minSdk 还是 21。
+
 **发布签名**：在 `local.properties` 里写上
 
 ```properties
@@ -163,7 +273,9 @@ keyAlias=litecast
 keyPassword=...
 ```
 
-然后 `./gradlew assembleRelease`。GitHub Actions 在推送 `v*` 标签时会自动构建并发布，需要在仓库 Settings → Secrets 里配置 `KEYSTORE_BASE64`（`base64 -w0 litecast-release.jks` 的输出）、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`。**签名文件不要提交到仓库，也要备份好**：换了签名，用户就没法覆盖升级。
+然后 `./gradlew assembleRelease`，把 `app/build/outputs/apk/release/app-release.apk` 改名成 `LiteCast.apk` 上传到发布页（每个版本都用这个文件名，README 里的下载链接才会一直指向最新版）。
+
+GitHub Actions 每次推送都会编译和测试。如果在仓库 Settings → Secrets 里配了 `KEYSTORE_BASE64`（`base64 -w0 litecast-release.jks` 的输出）、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`，推送 `v*` 标签时还会自动签名并发布；没配时只编译测试，APK 手动上传。**签名文件不要提交到仓库，也要备份好**：换了签名，用户就没法覆盖升级。
 
 **合并上游更新**
 

@@ -1,0 +1,57 @@
+name: 机型反馈 / Device report
+description: 告诉大家你的电视能不能用轻投 / Tell others whether LiteCast works on your TV
+title: "[机型] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        作者只有一台索尼 X90J，别的电视全靠大家反馈。能用、不能用都欢迎填，会整理进 README 的机型表。
+        The maintainer only has a Sony X90J. Reports from other TVs, working or not, go into the table in the README.
+  - type: input
+    id: model
+    attributes:
+      label: 电视品牌和型号 / TV brand and model
+      description: 包装上或 设置 → 关于 里写的型号 / As on the box or in Settings → About
+      placeholder: 索尼 KD-65X90J
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: 电视的安卓版本 / Android version
+      description: 一般在 设置 → 关于 里 / Usually in Settings → About
+      placeholder: Android 10
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 轻投版本 / LiteCast version
+      description: 轻投的 设置 → 关于 里写的版本 / In LiteCast, Settings → About
+      placeholder: "0.2.0"
+  - type: dropdown
+    id: result
+    attributes:
+      label: 结果 / Result
+      options:
+        - 都能用 / Everything I tried works
+        - 部分能用 / Some things work
+        - 装不上 / Can't install
+        - 装上了但投不了 / Installed, but casting fails
+    validations:
+      required: true
+  - type: checkboxes
+    id: works
+    attributes:
+      label: 能用的打勾 / Tick what works
+      options:
+        - label: iPhone / iPad 屏幕镜像 / Screen mirroring
+        - label: AirPlay 视频（相册、Safari 等）/ AirPlay video
+        - label: AirPlay 音乐 / AirPlay music
+        - label: 视频 App 的投屏按钮（DLNA）/ The cast button in video apps (DLNA)
+        - label: 电视重启后自己启动 / Starts by itself after the TV restarts
+  - type: textarea
+    id: details
+    attributes:
+      label: 补充说明 / Details
+      description: 用的什么手机、哪个 App 投的、哪里不对、装不上时的提示；能拍照更好 / Phone, app, what went wrong, the install error; photos help

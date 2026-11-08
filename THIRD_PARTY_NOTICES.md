@@ -40,6 +40,12 @@ modifications. Ported files from puppy-store-cast carry a header naming their or
 
 Test-only dependencies (JUnit, Robolectric, Roborazzi) are not part of the app.
 
+## Documentation
+
+The per-brand steps for turning on ADB in the README and `docs/agent.md`, and the idea of an
+install guide written for AI agents, follow [Aerial](https://github.com/pengchujin/aerial-tv)
+(MIT), whose users collected and verified them.
+
 ## Trademarks
 
 AirPlay is a trademark of Apple Inc. DLNA and UPnP are named only to describe interoperable
