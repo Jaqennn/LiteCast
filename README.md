@@ -68,7 +68,7 @@
 |---|---|---|
 | 索尼 X90J 国行 | Android 10 | ✅ 作者自用：屏幕镜像、AirPlay 视频和音乐、视频 App 投屏都正常 |
 
-Android 5.0–5.1 从 0.2.0 起支持，还没有真机实测。你的电视能用或不能用，都欢迎 [告诉大家](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml)，会整理进这张表。
+Android 5.0–5.1 从 0.2.0 起支持，还没有真机实测。你的电视能用或不能用，都欢迎 [填问卷告诉我们](https://wj.qq.com/s2/28601337/57hw/)（不用注册，也可以 [在 GitHub 上提](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml)），会整理进这张表。
 
 ## 下载
 
@@ -204,6 +204,12 @@ adb shell am start -n io.github.litecast/io.github.litecast.tv.HomeActivity
 **安全吗** — 不需要账号，不收集任何数据，没有广告。投屏协议本身没有密码（AirPlay 可以在设置里打开配对码），所以请只在自己家里的网络里使用，不要把电视的端口映射到公网。
 
 ## 反馈
+
+不用注册 GitHub：用微信扫下面的二维码，或者打开 [腾讯问卷](https://wj.qq.com/s2/28601337/57hw/)，1 分钟就能填完，国内网络直接能打开。
+
+<img src="docs/feedback-qr.png" width="144" alt="轻投使用反馈问卷二维码">
+
+有 GitHub 账号的话，也可以在这里提：
 
 - [机型反馈](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml)：你的电视能用还是不能用
 - [问题反馈](https://github.com/Jaqennn/LiteCast/issues/new?template=bug.yml)：投屏失败、卡顿、找不到电视、闪退等

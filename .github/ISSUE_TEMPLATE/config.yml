@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: 不用 GitHub 账号反馈（腾讯问卷）/ Feedback without a GitHub account
+    url: https://wj.qq.com/s2/28601337/57hw/
+    about: 国内网络能直接打开，1 分钟填完 / A short survey that opens in mainland China
   - name: 安装方法 / How to install
     url: https://github.com/Jaqennn/LiteCast#安装
     about: U 盘、让 AI 装、电脑 adb 三种方法，以及装不上时怎么办 / USB drive, an AI agent or adb, and what to do when it fails
