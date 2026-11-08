@@ -67,10 +67,18 @@ public final class SsdpServer implements AutoCloseable {
 
     public boolean isListening() { return listening; }
 
+    /**
+     * While we answer searches on 1900 a slow keep-alive is enough. When another receiver holds the
+     * port (乐播 on Sony and many other TVs) phones only learn about us from these announcements, so
+     * their device list would show us up to one interval late: every 4 s keeps that wait short for
+     * about 1.5 small packets a second.
+     */
+    static long announceIntervalSeconds(boolean listening) { return listening ? 90 : 4; }
+
     public void start() {
         // Controllers that only listen passively see us within a second; repeat in case of loss.
         for (long delay : new long[]{0, 1, 3}) scheduler.schedule(() -> announce("ssdp:alive"), delay, TimeUnit.SECONDS);
-        long interval = listening ? 90 : 20;
+        long interval = announceIntervalSeconds(listening);
         scheduler.scheduleWithFixedDelay(() -> announce("ssdp:alive"), interval, interval, TimeUnit.SECONDS);
         if (!listening) return;
         Thread t = new Thread(() -> {

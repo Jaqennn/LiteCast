@@ -104,6 +104,13 @@ class DlnaProtocolTest {
     }
 
     @Test
+    fun announceOnlyModeRepeatsOften() {
+        // Next to 乐播 we can't answer searches, so phones rely on announcements
+        assertTrue(SsdpServer.announceIntervalSeconds(false) <= 5)
+        assertTrue(SsdpServer.announceIntervalSeconds(true) >= 60)
+    }
+
+    @Test
     fun formatSniffing() {
         assertEquals("HLS", MediaProbe.inspect("#EXTM3U\n#EXT-X-VERSION:3".toByteArray(), "", "").kind())
         assertEquals("HLS", MediaProbe.inspect("\uFEFF  #EXTM3U".toByteArray(), "video/mp4", "").kind())
