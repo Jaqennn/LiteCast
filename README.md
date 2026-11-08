@@ -68,7 +68,7 @@
 |---|---|---|
 | 索尼 X90J 国行 | Android 10 | ✅ 作者自用：屏幕镜像、AirPlay 视频和音乐、视频 App 投屏都正常 |
 
-Android 5.0–5.1 从 0.2.0 起支持，还没有真机实测。你的电视能用或不能用，都欢迎 [填问卷告诉我们](https://wj.qq.com/s2/28601337/57hw/)（不用注册，也可以 [在 GitHub 上提](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml)），会整理进这张表。
+Android 5.0–5.1 还没有真机实测。你的电视能用或不能用，都欢迎 [填问卷告诉我们](https://wj.qq.com/s2/28601337/57hw/)（不用注册，也可以 [在 GitHub 上提](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml)），会整理进这张表。
 
 ## 下载
 

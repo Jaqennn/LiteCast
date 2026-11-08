@@ -49,7 +49,7 @@ The app decides the quality: DLNA only hands the TV a URL (Bilibili gives third-
 - ARM chips (nearly every TV)
 - Not supported: Android 4.4 and older; non-Android systems such as LG webOS and Samsung Tizen
 
-Tested: Sony X90J (Chinese market, Android 10), the author's own TV — mirroring, AirPlay video and music and DLNA all work. Android 5.0–5.1 is supported from 0.2.0 but has not been tried on a real TV yet. Please [report your TV](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml), working or not.
+Tested: Sony X90J (Chinese market, Android 10), the author's own TV — mirroring, AirPlay video and music and DLNA all work. Android 5.0–5.1 has not been tried on a real TV yet. Please [report your TV](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml), working or not.
 
 ## Download
 
