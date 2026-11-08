@@ -205,7 +205,11 @@ adb shell am start -n io.github.litecast/io.github.litecast.tv.HomeActivity
 
 ## 反馈
 
-不用注册 GitHub：用微信扫下面的二维码，或者打开 [腾讯问卷](https://wj.qq.com/s2/28601337/57hw/)，1 分钟就能填完，国内网络直接能打开。
+装了轻投的话最方便：主页右上角点「反馈」，电视上会显示问卷二维码，旁边写好了这台电视的品牌、型号和安卓版本，手机扫码照着填就行。
+
+<img src="docs/screenshots/feedback.png" width="480" alt="轻投的反馈页：问卷二维码和自动读出的电视信息">
+
+没装或者装不上：用微信扫下面的二维码，或者打开 [腾讯问卷](https://wj.qq.com/s2/28601337/57hw/)，1 分钟就能填完，不用注册，国内网络直接能打开。
 
 <img src="docs/feedback-qr.png" width="144" alt="轻投使用反馈问卷二维码">
 

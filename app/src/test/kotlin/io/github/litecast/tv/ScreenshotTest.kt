@@ -24,6 +24,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import io.github.jqssun.airplay.audio.TrackInfo
 import io.github.jqssun.airplay.service.AirPlayService
 import io.github.jqssun.airplay.service.VideoPlaybackInfo
+import io.github.litecast.DeviceInfo
 import io.github.litecast.dlna.DlnaRenderer
 import org.junit.Assume
 import org.junit.Before
@@ -71,6 +72,11 @@ class ScreenshotTest {
     @Test
     fun homeNeedsPopUpPermission() = shot("home-popup") {
         HomeContent(readyHome.copy(canPopUp = false, sessionActive = true), {}, {}, {}, {}, {})
+    }
+
+    @Test
+    fun feedback() = shot("feedback") {
+        FeedbackContent(DeviceInfo.Info(brand = "小米（Xiaomi）", model = "MiTV-MFTR0", android = "Android 14", app = "0.2.1"), onBack = {})
     }
 
     @Test
@@ -174,6 +180,11 @@ class ScreenshotEnglishTest {
 
     @Test
     fun homeEnglish() = shot("en-home-popup") { HomeContent(home, {}, {}, {}, {}, {}) }
+
+    @Test
+    fun feedbackEnglish() = shot("en-feedback") {
+        FeedbackContent(DeviceInfo.Info(brand = "Sony", model = "BRAVIA 4K VH2", android = "Android 12", app = "0.2.1"), onBack = {})
+    }
 
     @Test
     fun unreachableEnglish() = shot("en-player-unreachable") {

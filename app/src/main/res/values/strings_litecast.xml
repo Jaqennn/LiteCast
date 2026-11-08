@@ -82,4 +82,19 @@
     <string name="lc_error_unreachable">The TV cannot reach the video\'s server. Sites like YouTube must be reachable from the TV itself; screen mirroring still works.</string>
     <string name="lc_cd_previous">Previous</string>
     <string name="lc_cd_next">Next</string>
+    <string name="lc_action_feedback">Feedback</string>
+    <string name="lc_feedback_title">Feedback</string>
+    <string name="lc_feedback_back">Back</string>
+    <string name="lc_feedback_body">Scan with your phone to fill in a one-minute survey about how LiteCast works on this TV.</string>
+    <string name="lc_feedback_qr">QR code of the feedback survey</string>
+    <string name="lc_feedback_scan">No account needed · the survey is in Chinese</string>
+    <string name="lc_feedback_copy">Copy these into the survey:</string>
+    <string name="lc_feedback_brand">Brand</string>
+    <string name="lc_feedback_model">Model</string>
+    <string name="lc_feedback_android">Android</string>
+    <string name="lc_feedback_version">LiteCast</string>
+    <string name="lc_feedback_model_note">The model is the TV system\'s own name and may differ from the box; use the one here. On GitHub: github.com/Jaqennn/LiteCast/issues</string>
+    <string name="lc_setting_feedback">Feedback</string>
+    <string name="lc_setting_feedback_desc">Scan a QR code to tell us how LiteCast works on this TV</string>
+    <string name="lc_error_feedback_hint">Can\'t cast? Tell us: LiteCast home screen → Feedback</string>
 </resources>

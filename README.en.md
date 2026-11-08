@@ -88,7 +88,7 @@ LiteCast changes no system settings and disables nothing, so uninstalling restor
 - **YouTube keeps loading**: with AirPlay video the TV downloads from YouTube itself, so the TV's network has to reach it; screen mirroring works regardless.
 - **Mirroring stutters**: use 5 GHz Wi-Fi for the phone and Ethernet for the TV, or lower the resolution in Settings → Advanced.
 - **Security**: no account, no data collected. Casting protocols have no password (AirPlay can require a PIN in settings), so use it on your home network only.
-- **Bugs**: [report a problem](https://github.com/Jaqennn/LiteCast/issues/new?template=bug.yml).
+- **Feedback**: the Feedback button on LiteCast's home screen shows a survey QR code (in Chinese) with your TV's brand, model and Android version beside it; on GitHub, [report your TV](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml) or [a problem](https://github.com/Jaqennn/LiteCast/issues/new?template=bug.yml).
 
 ## How it is built
 

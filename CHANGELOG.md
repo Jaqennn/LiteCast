@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1
+
+- A Feedback button on the home screen (and Feedback in Settings) opens a page with the survey's
+  QR code and this TV's brand, model, Android version and LiteCast version, read from the system,
+  so people copy them into the survey instead of looking them up. The survey needs no account and
+  opens in mainland China; the QR code is bundled, nothing is sent from the TV
+- A cast that fails for good now says where to send feedback
+
 ## 0.2.0
 
 - Runs on Android 5.0 and later (was 6.0), so older TVs and boxes can install it. Compose stays on

@@ -1,0 +1,1 @@
+New Feedback page: the survey QR code with this TV's brand, model and Android version shown beside it.

@@ -81,4 +81,19 @@
     <string name="lc_error_unreachable">电视连不上视频服务器。油管这类网站需要电视本身能访问；也可以改用屏幕镜像。</string>
     <string name="lc_cd_previous">上一首</string>
     <string name="lc_cd_next">下一首</string>
+    <string name="lc_action_feedback">反馈</string>
+    <string name="lc_feedback_title">反馈问题</string>
+    <string name="lc_feedback_back">返回</string>
+    <string name="lc_feedback_body">用手机扫码，填一个 1 分钟的问卷，告诉我们轻投在这台电视上能不能用。</string>
+    <string name="lc_feedback_qr">反馈问卷的二维码</string>
+    <string name="lc_feedback_scan">微信扫一扫 · 不用登录</string>
+    <string name="lc_feedback_copy">填问卷时照着填：</string>
+    <string name="lc_feedback_brand">品牌</string>
+    <string name="lc_feedback_model">型号</string>
+    <string name="lc_feedback_android">安卓版本</string>
+    <string name="lc_feedback_version">轻投版本</string>
+    <string name="lc_feedback_model_note">型号是电视系统里的写法，可能和包装上不一样，照着这里填就行。</string>
+    <string name="lc_setting_feedback">反馈问题</string>
+    <string name="lc_setting_feedback_desc">扫码填问卷，告诉我们你的电视能不能用</string>
+    <string name="lc_error_feedback_hint">投不了？回到轻投主页，点右上角「反馈」告诉我们</string>
 </resources>

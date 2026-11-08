@@ -380,6 +380,7 @@ internal fun ErrorCard(message: String, fatal: Boolean = false) {
             CircularProgressIndicator(color = Tv.Warning, strokeWidth = 3.dp, modifier = Modifier.size(32.dp))
         }
         Text(message, style = Tv.Body.copy(color = Tv.TextPrimary))
+        if (fatal) Text(stringResource(R.string.lc_error_feedback_hint), style = Tv.Caption)
     }
 }
 

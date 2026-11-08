@@ -37,6 +37,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Feedback
 import androidx.compose.material.icons.rounded.OndemandVideo
 import androidx.compose.material.icons.rounded.PhoneIphone
 import androidx.compose.material.icons.rounded.PlayCircle
@@ -82,11 +83,17 @@ import kotlinx.coroutines.delay
 class HomeActivity : ComponentActivity() {
     private val binding = ServiceBinding(this)
     private val screen = mutableStateOf(Screen.HOME)
+    private var feedbackFrom = Screen.HOME
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         binding.service.value?.let(::ensureRunning)
     }
 
-    private enum class Screen { HOME, SETTINGS }
+    private enum class Screen { HOME, SETTINGS, FEEDBACK }
+
+    private fun openFeedback(from: Screen) {
+        feedbackFrom = from
+        screen.value = Screen.FEEDBACK
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -97,10 +104,14 @@ class HomeActivity : ComponentActivity() {
             LiteCastTheme {
                 val svc = binding.service.value
                 when (screen.value) {
-                    Screen.HOME -> HomeScreen(svc, onSettings = { screen.value = Screen.SETTINGS })
+                    Screen.HOME -> HomeScreen(svc, onSettings = { screen.value = Screen.SETTINGS }, onFeedback = { openFeedback(Screen.HOME) })
                     Screen.SETTINGS -> {
                         BackHandler { screen.value = Screen.HOME }
-                        SettingsScreen(svc)
+                        SettingsScreen(svc, onFeedback = { openFeedback(Screen.SETTINGS) })
+                    }
+                    Screen.FEEDBACK -> {
+                        BackHandler { screen.value = feedbackFrom }
+                        FeedbackScreen(onBack = { screen.value = feedbackFrom })
                     }
                 }
             }
@@ -141,7 +152,7 @@ internal data class HomeUi(
 )
 
 @Composable
-private fun HomeScreen(svc: AirPlayService?, onSettings: () -> Unit) {
+private fun HomeScreen(svc: AirPlayService?, onSettings: () -> Unit, onFeedback: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE) }
     val name by remember { prefs.observe { this[Prefs.SERVER_NAME] } }.collectAsState(prefs[Prefs.SERVER_NAME])
@@ -179,6 +190,7 @@ private fun HomeScreen(svc: AirPlayService?, onSettings: () -> Unit) {
         onBackToCast = { context.startActivity(LiteCast.playerIntent(context)) },
         onStartReceiver = { svc?.startServer() },
         onAllowPopUp = { openOverlaySettings(context) },
+        onFeedback = onFeedback,
     )
 
     if (renaming) {
@@ -201,6 +213,7 @@ internal fun HomeContent(
     onBackToCast: () -> Unit,
     onStartReceiver: () -> Unit,
     onAllowPopUp: () -> Unit,
+    onFeedback: () -> Unit = {},
 ) {
     val noticeFocus = remember { FocusRequester() }
     val castFocus = remember { FocusRequester() }
@@ -227,6 +240,8 @@ internal fun HomeContent(
                     Spacer(Modifier.width(12.dp))
                 }
                 PillButton(stringResource(R.string.lc_action_rename), Icons.Rounded.Edit, onClick = onRename)
+                Spacer(Modifier.width(12.dp))
+                PillButton(stringResource(R.string.lc_action_feedback), Icons.Rounded.Feedback, onClick = onFeedback)
                 Spacer(Modifier.width(12.dp))
                 PillButton(stringResource(R.string.lc_action_settings), Icons.Rounded.Settings, Modifier.focusRequester(settingsFocus), onClick = onSettings)
             }
@@ -374,7 +389,7 @@ internal data class SettingsUi(
 )
 
 @Composable
-private fun SettingsScreen(svc: AirPlayService?) {
+private fun SettingsScreen(svc: AirPlayService?, onFeedback: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE) }
     val serverState = svc?.serverState.collectOr(AirPlayService.ServerState.STOPPED)
@@ -396,6 +411,7 @@ private fun SettingsScreen(svc: AirPlayService?) {
         onTogglePin = { prefs.edit { putBoolean(Prefs.REQUIRE_PIN.key, !pin) } },
         onAdvanced = { context.startActivity(Intent(context, MainActivity::class.java)) },
         onAbout = { about = true },
+        onFeedback = onFeedback,
     )
 
     if (about) {
@@ -419,6 +435,7 @@ internal fun SettingsContent(
     onTogglePin: () -> Unit,
     onAdvanced: () -> Unit,
     onAbout: () -> Unit,
+    onFeedback: () -> Unit = {},
 ) {
     val first = remember { FocusRequester() }
     val on = stringResource(R.string.lc_on)
@@ -444,6 +461,7 @@ internal fun SettingsContent(
                     flag(ui.canPopUp), ui.canPopUp, onClick = onPopUp)
                 SettingRow(stringResource(R.string.lc_setting_pin), stringResource(R.string.lc_setting_pin_desc), flag(ui.pin), ui.pin, onClick = onTogglePin)
                 SettingRow(stringResource(R.string.lc_setting_advanced), stringResource(R.string.lc_setting_advanced_desc), null, onClick = onAdvanced)
+                SettingRow(stringResource(R.string.lc_setting_feedback), stringResource(R.string.lc_setting_feedback_desc), null, onClick = onFeedback)
                 SettingRow(stringResource(R.string.lc_setting_about), ui.version, null, onClick = onAbout)
             }
         }
