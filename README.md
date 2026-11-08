@@ -208,7 +208,7 @@ adb shell am start -n io.github.litecast/io.github.litecast.tv.HomeActivity
 - [机型反馈](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml)：你的电视能用还是不能用
 - [问题反馈](https://github.com/Jaqennn/LiteCast/issues/new?template=bug.yml)：投屏失败、卡顿、找不到电视、闪退等
 
-写上电视型号、安卓版本、手机型号和用的哪个 App，能更快找到原因。
+至少写上电视品牌就行；知道型号和安卓版本更好，一般在电视的 设置 → 关于 里，也可以看电视背面的标签。
 
 ## 工作原理
 

@@ -5,24 +5,52 @@ body:
   - type: markdown
     attributes:
       value: |
-        作者只有一台索尼 X90J，别的电视全靠大家反馈。能用、不能用都欢迎填，会整理进 README 的机型表。
-        The maintainer only has a Sony X90J. Reports from other TVs, working or not, go into the table in the README.
+        作者只有一台索尼 X90J，别的电视全靠大家反馈。能用、不能用都欢迎填，会整理进 README 的机型表。只有品牌是必填的，型号和安卓版本知道就填。
+        The maintainer only has a Sony X90J. Reports from other TVs, working or not, go into the table in the README. Only the brand is required.
+  - type: dropdown
+    id: brand
+    attributes:
+      label: 电视品牌 / TV brand
+      options:
+        - 索尼 Sony
+        - 小米 / Redmi
+        - TCL / 雷鸟
+        - 海信 / Vidda
+        - 创维 / 酷开
+        - 长虹
+        - 康佳
+        - 海尔
+        - 夏普 Sharp
+        - 乐视
+        - 华为 / 荣耀
+        - 电视盒子或投影仪 / TV box or projector
+        - 其他（写在下面）/ Other (say which below)
+    validations:
+      required: true
   - type: input
     id: model
     attributes:
-      label: 电视品牌和型号 / TV brand and model
-      description: 包装上或 设置 → 关于 里写的型号 / As on the box or in Settings → About
-      placeholder: 索尼 KD-65X90J
-    validations:
-      required: true
-  - type: input
+      label: 电视型号（知道就填）/ Model (if you know it)
+      description: 一般在电视的 设置 → 关于（或「本机信息」「设备信息」）里，也可以看电视背面的标签。不知道就不填 / Usually in Settings → About, or on the label on the back. Leave it empty if unsure
+      placeholder: KD-65X90J
+  - type: dropdown
     id: android
     attributes:
-      label: 电视的安卓版本 / Android version
+      label: 安卓版本（知道就选）/ Android version (if you know it)
       description: 一般在 设置 → 关于 里 / Usually in Settings → About
-      placeholder: Android 10
-    validations:
-      required: true
+      options:
+        - 不知道 / Not sure
+        - Android 4.x 或更老 / or older
+        - Android 5
+        - Android 6
+        - Android 7
+        - Android 8
+        - Android 9
+        - Android 10
+        - Android 11
+        - Android 12
+        - Android 13
+        - Android 14 或更新 / or newer
   - type: input
     id: version
     attributes:
