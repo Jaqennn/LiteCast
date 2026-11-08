@@ -95,7 +95,7 @@ adb install -r LiteCast.apk
 
 输出里有 `Success` 才算装上（有的固件失败时也返回 0，只看输出）。失败时：
 
-- **`INSTALL_FAILED_UPDATE_INCOMPATIBLE`** 或 **`INSTALL_PARSE_FAILED_INCONSISTENT_CERTIFICATES`**：电视上有一个签名不同的旧版轻投（0.1.x 用的是另一把签名）。先告诉用户：卸载旧版会丢掉在轻投里改过的电视名，用户同意后运行 `adb uninstall io.github.litecast`，再装一次。
+- **`INSTALL_FAILED_UPDATE_INCOMPATIBLE`** 或 **`INSTALL_PARSE_FAILED_INCONSISTENT_CERTIFICATES`**：电视上已经有一个签名不同的轻投（比如自己用源码编译的版本）。先告诉用户：卸载旧版会丢掉在轻投里改过的电视名，用户同意后运行 `adb uninstall io.github.litecast`，再装一次。
 - **`INSTALL_FAILED_OLDER_SDK`**：电视是 Android 5.0 以前的系统，不支持。
 - **`INSTALL_FAILED_NO_MATCHING_ABIS`**：设备不是 ARM 芯片，不支持。
 - **`INSTALL_FAILED_USER_RESTRICTED`**（创维等）：先看电视上有没有弹出安装确认，请用户同意；没有的话运行 `adb shell settings put global verifier_verify_adb_installs 0` 再装。小米要先在 设置 → 账号与安全 里打开「安装未知来源的应用」。

@@ -67,7 +67,7 @@ Tested: Sony X90J (Chinese market, Android 10), the author's own TV — mirrorin
   adb shell am start -n io.github.litecast/io.github.litecast.tv.HomeActivity
   ```
 
-**Upgrading from 0.1.x**: 0.2.0 is signed with a new key, so uninstall 0.1.x first. Later versions install over 0.2.0 and keep the settings.
+**Updating**: install the new LiteCast.apk the same way; it replaces the old version and keeps the settings.
 
 Open LiteCast once. For casts to pop up while you are watching something else, allow **Display over other apps** (the home screen has a button for it). From then on it waits in the background and starts with the TV.
 

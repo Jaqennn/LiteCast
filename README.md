@@ -129,9 +129,9 @@ adb shell am start -n io.github.litecast/io.github.litecast.tv.HomeActivity
 
 第三条让投屏画面能盖在别的节目上，Android 5.x 不需要，报错可以忽略。装不上时按 [docs/agent.md](docs/agent.md) 里「第 5 步」的说明处理。
 
-### 从 0.1.x 升级
+### 以后升级
 
-0.2.0 换了新的签名，不能直接覆盖 0.1.x：先在 设置 → 应用 → 轻投 里卸载旧版，再装新版（在轻投里改过的电视名要重新改一次）。以后的版本都可以直接覆盖安装，设置会保留。
+有新版本时，下载新的 LiteCast.apk，按上面同样的方法装一次就行，会直接覆盖旧版，设置都保留。
 
 ## 第一次使用
 

@@ -9,7 +9,7 @@
   media3-ui-compose-material3
 - On a TV whose built-in casting app holds the DLNA discovery port (乐播 on Sony and many others),
   LiteCast announces itself every 4 seconds instead of every 20, so phones list it within seconds
-- Signed with a new key: uninstall 0.1.x before installing 0.2.0
+- New release signing key (0.1.x was never published as a download)
 - The release file is always called LiteCast.apk, so the README's download link always gets the
   newest version
 - Install guide rewritten: what the app solves, what each phone can cast, which Android versions
