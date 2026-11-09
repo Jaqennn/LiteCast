@@ -63,7 +63,7 @@ If GitHub doesn't open or the download crawls (common in mainland China), try mo
 
 ## Install
 
-- **USB drive** (no computer, no developer mode, no coding): copy LiteCast.apk to a USB drive and open it with the TV's file manager. If the TV refuses apps from unknown sources, allow that file manager in Settings → Device Preferences → Security & restrictions → Unknown sources (the place differs between brands). On Chinese-market Sony TVs it is simpler: plug in the drive and open the built-in 应用助手 (App Assistant); it lists 轻投 from the drive, then choose 安装 (Install). Sony's 媒体播放器 (Media Player) only shows photos, videos and music, so an empty drive there is normal. If a file manager doesn't show the APK, some TVs hide installers there: open the drive with the TV's own app manager instead.
+- **USB drive** (no computer, no developer mode, no coding): copy LiteCast.apk to a USB drive and open it with the TV's file manager. If the TV refuses apps from unknown sources, allow that file manager in Settings → Device Preferences → Security & restrictions → Unknown sources (the place differs between brands). On Chinese-market Sony TVs it is simpler: plug in the drive, press 主菜单 (Home) on the remote, open 我的应用 (My Apps) at the top left and start 应用助手 (App Assistant); it lists 轻投 from the drive, then choose 安装 (Install). Sony's 媒体播放器 (Media Player) only shows photos, videos and music, so an empty drive there is normal. If a file manager doesn't show the APK, some TVs hide installers there: open the drive with the TV's own app manager instead.
 - **An AI agent**: give a desktop agent that can run commands (Claude Code, Codex, …) the guide in [docs/agent.md](docs/agent.md) (in Chinese) and your TV's IP address; it installs, checks and reports back.
 - **adb**:
   ```bash
@@ -85,7 +85,7 @@ Open LiteCast once. For casts to pop up while you are watching something else, a
 
 ## Undo
 
-LiteCast changes no system settings and disables nothing, so uninstalling restores the TV: Settings → Apps → LiteCast (轻投) → Uninstall, or `adb uninstall io.github.litecast`.
+LiteCast changes no system settings and disables nothing, so uninstalling restores the TV: in the app list select LiteCast (轻投), hold the OK button and choose Uninstall (on Chinese-market Sony TVs: 主菜单 → 我的应用 → 轻投 → hold OK → 卸载); or Settings → Apps → LiteCast → Uninstall; or `adb uninstall io.github.litecast`.
 
 ## Compared with other options
 
