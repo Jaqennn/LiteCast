@@ -18,15 +18,17 @@
 
 - **The TV's built-in casting wants money**: Chinese-market Sony TVs and others ship with Lebo (乐播), which starts asking for a membership. LiteCast began on a Sony X90J like that.
 - **iPhones can't cast to most Android TVs**: screen mirroring only speaks AirPlay.
-- **Third-party casting apps** want accounts, show ads or cap the time.
+- **Switching apps doesn't last**: many third-party casting apps want accounts, show ads or cap the time; some are free when installed, then update themselves into a paid plan that allows ten minutes per cast.
+- **The usual workarounds don't stick**: uninstalling Lebo's updates or restoring an old version often comes undone with the next system update.
 
 ## What LiteCast gives you
 
 - Free, no ads, no account, no time limit; open source
+- No membership can appear later: casting stays on your home Wi-Fi, and LiteCast has no server and no account
 - iPhone and Android phones alike: AirPlay (mirroring, video, music) and DLNA (the cast button in video apps) run side by side
 - Old TVs too: Android 5.0 and later, on TVs, boxes and projectors
 - Install once: it waits in the background, starts with the TV, pops up when you cast and closes when you stop
-- Leaves the TV alone: no system settings are changed, it runs next to Lebo, and uninstalling undoes everything
+- Leaves the TV alone: no system settings are changed, it runs next to Lebo (if Lebo holds the port, LiteCast picks another one by itself), and uninstalling undoes everything
 - One APK, under 10 MB, for every TV, 32- and 64-bit
 
 ## What can be cast
@@ -46,8 +48,10 @@ The app decides the quality: DLNA only hands the TV a URL (Bilibili gives third-
 ## Supported TVs
 
 - Android 5.0 or later: Android TV / Google TV, Android-based TVs from any brand, boxes and projectors
+- Common brands: Sony Android TV / Google TV (X90J, A90J, X90L and others); TVs from TCL, Xiaomi, Skyworth and Sharp, projectors from Dangbei and XGIMI, and boxes such as the Xiaomi box mostly run Android-based systems: if the TV can install third-party apps, it can install LiteCast
 - ARM chips (nearly every TV)
-- Not supported: Android 4.4 and older; non-Android systems such as LG webOS and Samsung Tizen
+- Not supported: Android 4.4 and older; non-Android systems such as Samsung Tizen and LG webOS; old TVs that cannot install apps at all. Huawei and Honor smart screens have not been tried
+- How to tell: Settings → About shows an Android version, or the TV can install third-party app stores
 
 Tested: Sony X90J (Chinese market, Android 10), the author's own TV — mirroring, AirPlay video and music and DLNA all work. Android 5.0–5.1 has not been tried on a real TV yet. Please [report your TV](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml), working or not.
 
@@ -55,9 +59,11 @@ Tested: Sony X90J (Chinese market, Android 10), the author's own TV — mirrorin
 
 [Download LiteCast.apk](https://github.com/Jaqennn/LiteCast/releases/latest/download/LiteCast.apk). On the [release page](https://github.com/Jaqennn/LiteCast/releases/latest) it is the **LiteCast.apk** file under "Assets"; the "Source code" entries are the source, not the app.
 
+If GitHub doesn't open or the download crawls (common in mainland China), try mobile data or another Wi-Fi; or let an AI agent install it (below), which falls back to a download mirror and checks the file against the official SHA-256.
+
 ## Install
 
-- **USB drive**: copy LiteCast.apk to a USB drive and open it with the TV's file manager. If the TV refuses apps from unknown sources, allow that file manager in Settings → Device Preferences → Security & restrictions → Unknown sources (the place differs between brands).
+- **USB drive** (no computer, no developer mode, no coding): copy LiteCast.apk to a USB drive and open it with the TV's file manager. If the TV refuses apps from unknown sources, allow that file manager in Settings → Device Preferences → Security & restrictions → Unknown sources (the place differs between brands). If the file manager doesn't show the APK, some TVs hide installers there: open the USB drive with the TV's own app manager instead.
 - **An AI agent**: give a desktop agent that can run commands (Claude Code, Codex, …) the guide in [docs/agent.md](docs/agent.md) (in Chinese) and your TV's IP address; it installs, checks and reports back.
 - **adb**:
   ```bash
@@ -81,13 +87,33 @@ Open LiteCast once. For casts to pop up while you are watching something else, a
 
 LiteCast changes no system settings and disables nothing, so uninstalling restores the TV: Settings → Apps → LiteCast (轻投) → Uninstall, or `adb uninstall io.github.litecast`.
 
+## Compared with other options
+
+| Option | Good | Not so good |
+|---|---|---|
+| Pay for Lebo's membership | No fiddling | You keep paying |
+| Uninstall Lebo's updates, restore an old version | Nothing new to install | Often undone by the next system update |
+| Other free casting apps | Install and go | Some want accounts, show ads or cap the time; some turned paid later |
+| A TV box or Apple TV | Reliable | Costs money and takes an HDMI port |
+| An HDMI cable to a computer or phone | Best picture, no latency | A cable across the room |
+| LiteCast | Free and open source, iPhone and Android, runs next to Lebo | No full-screen mirroring from Android phones; you install an APK |
+
 ## FAQ
 
 - **The phone doesn't list the TV**: phone and TV must be on the same network (guest networks and AP isolation block discovery); turn off the phone's VPN; on an iPhone, allow Local Network for the video app. On a TV with Lebo it can take a few seconds to appear.
 - **A cast doesn't show up**: allow Display over other apps, or open LiteCast first.
 - **YouTube keeps loading**: with AirPlay video the TV downloads from YouTube itself, so the TV's network has to reach it; screen mirroring works regardless.
 - **Mirroring stutters**: use 5 GHz Wi-Fi for the phone and Ethernet for the TV, or lower the resolution in Settings → Advanced.
-- **Security**: no account, no data collected. Casting protocols have no password (AirPlay can require a PIN in settings), so use it on your home network only.
+- **Will it start charging one day?** There is nothing to charge for: no server, no account, casting stays on your network. The code is GPL-3.0, so anyone can carry it on.
+- **Do I have to open LiteCast before every cast?** No. It starts with the TV and waits in the background; with Display over other apps allowed, a cast pops up over whatever you are watching.
+- **Can I cast while the TV is in standby?** Not yet; turn the TV on first.
+- **Android's own "wireless display", or Huawei / Xiaomi / Samsung casting, can't find LiteCast**: those are Miracast or vendor protocols that need system-level access on the TV. On Android phones, use the cast button inside video apps.
+- **Is the picture compressed?** Mirroring sends the phone's screen as live video, a little softer than an HDMI cable; with a video app's cast button the TV plays the original stream, at the quality the app allows.
+- **4K and HDR?** If the app hands over a 4K stream and the TV can decode it, it plays in 4K; HDR depends on the video and the TV. For mirroring, 1080p is recommended.
+- **Gaming?** Mirroring has a little latency: fine for video and photos, not for fast games. The frame-rate cap (60 by default) is in Settings → Advanced.
+- **Playback speed, portrait videos?** Speed control isn't there yet. Portrait videos keep black bars on a landscape TV.
+- **One app's casts drop after a while, or it doesn't list LiteCast**: some apps only cast to their own TV apps or block third-party receivers. Try mirroring, and tell us which app.
+- **Security**: no account, no data collected. LiteCast only asks for network and local discovery, start at boot, display over other apps (to pop up a cast), a foreground service with its notification (to wait in the background) and keeping the screen on while casting; no storage, camera, microphone, contacts or location. Casting protocols have no password (AirPlay can require a PIN in settings), so use it on your home network only.
 - **Feedback**: the Feedback button on LiteCast's home screen shows a survey QR code (in Chinese) with your TV's brand, model and Android version beside it; on GitHub, [report your TV](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml) or [a problem](https://github.com/Jaqennn/LiteCast/issues/new?template=bug.yml).
 
 ## How it is built

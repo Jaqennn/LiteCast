@@ -80,12 +80,29 @@ adb shell getprop ro.product.cpu.abilist
 ## 第 4 步：下载 APK
 
 ```powershell
-curl.exe -fL -o LiteCast.apk https://github.com/Jaqennn/LiteCast/releases/latest/download/LiteCast.apk
+curl.exe -fL --retry 3 -o LiteCast.apk https://github.com/Jaqennn/LiteCast/releases/latest/download/LiteCast.apk
 ```
 
-（macOS / Linux 把 `curl.exe` 换成 `curl`。）下载很慢或失败时，请用户自己用浏览器打开 https://github.com/Jaqennn/LiteCast/releases/latest ，在「Assets」下点 `LiteCast.apk` 下载，再告诉你文件路径。
+（macOS / Linux 把 `curl.exe` 换成 `curl`。）
 
-可选：核对校验值。`certutil -hashfile LiteCast.apk SHA256`（Windows）或 `shasum -a 256 LiteCast.apk`（macOS / Linux），和发布页写的 SHA-256 对一下。
+下载很慢、失败，或者连不上 github.com（国内常见）时，换成加速地址再下一次：
+
+```powershell
+curl.exe -fL --retry 3 -o LiteCast.apk https://ghfast.top/https://github.com/Jaqennn/LiteCast/releases/latest/download/LiteCast.apk
+```
+
+加速地址是第三方镜像，用了它就**必须**核对文件和官方的一样，才能往下走（直连下载的也建议核对）：
+
+```powershell
+(Get-FileHash LiteCast.apk -Algorithm SHA256).Hash.ToLower()
+(Invoke-RestMethod https://api.github.com/repos/Jaqennn/LiteCast/releases/latest).assets | Where-Object name -eq 'LiteCast.apk' | ForEach-Object digest
+```
+
+（macOS / Linux：`shasum -a 256 LiteCast.apk`；官方值用 `curl -s https://api.github.com/repos/Jaqennn/LiteCast/releases/latest`，看 `LiteCast.apk` 的 `digest`。）
+
+- 第二行输出的 `sha256:` 后面那一串，要和第一行完全一样。不一样就删掉这个文件，不要装，告诉用户。
+- 连 api.github.com 也打不开：把算出来的 SHA-256 给用户，请他和发布页说明末尾写的对一下；对不上就不要装。
+- 两个地址都下不下来：请用户自己用浏览器下载（发布页 https://github.com/Jaqennn/LiteCast/releases/latest 的「Assets」里点 `LiteCast.apk`），再告诉你文件路径。
 
 ## 第 5 步：安装
 
