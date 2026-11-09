@@ -102,7 +102,7 @@ curl.exe -fL --retry 3 -o LiteCast.apk https://ghfast.top/https://github.com/Jaq
 
 - 第二行输出的 `sha256:` 后面那一串，要和第一行完全一样。不一样就删掉这个文件，不要装，告诉用户。
 - 连 api.github.com 也打不开：把算出来的 SHA-256 给用户，请他和发布页说明末尾写的对一下；对不上就不要装。
-- 两个地址都下不下来：请用户自己用浏览器下载（发布页 https://github.com/Jaqennn/LiteCast/releases/latest 的「Assets」里点 `LiteCast.apk`），再告诉你文件路径。
+- 两个地址都下不下来：请用户自己用浏览器下载，再告诉你文件路径。国内用户用蓝奏云备用下载 https://wwary.lanzoub.com/b01i5zvujg （提取码 `47il`，点里面的 LiteCast.apk）；能上 GitHub 的用发布页 https://github.com/Jaqennn/LiteCast/releases/latest 「Assets」里的 `LiteCast.apk`。拿到文件照样核对 SHA-256。
 
 ## 第 5 步：安装
 

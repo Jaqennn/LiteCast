@@ -59,7 +59,7 @@ Tested: Sony X90J (Chinese market, Android 10), the author's own TV — mirrorin
 
 [Download LiteCast.apk](https://github.com/Jaqennn/LiteCast/releases/latest/download/LiteCast.apk). On the [release page](https://github.com/Jaqennn/LiteCast/releases/latest) it is the **LiteCast.apk** file under "Assets"; the "Source code" entries are the source, not the app.
 
-If GitHub doesn't open or the download crawls (common in mainland China), try mobile data or another Wi-Fi; or let an AI agent install it (below), which falls back to a download mirror and checks the file against the official SHA-256.
+If GitHub doesn't open or the download crawls (common in mainland China), try mobile data or another Wi-Fi; use the mirror on Lanzou, [https://wwary.lanzoub.com/b01i5zvujg](https://wwary.lanzoub.com/b01i5zvujg) (code `47il`), which holds the same LiteCast.apk uploaded from the release page (GitHub always has the newest); or let an AI agent install it (below), which falls back to a download mirror and checks the file against the official SHA-256.
 
 ## Install
 

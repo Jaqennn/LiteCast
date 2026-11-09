@@ -79,7 +79,11 @@ Android 5.0–5.1 还没有真机实测。你的电视能用或不能用，都�
 
 也可以打开 [发布页](https://github.com/Jaqennn/LiteCast/releases/latest)，在版本说明下面的「Assets」里点 **LiteCast.apk**。旁边的「Source code (zip)」「Source code (tar.gz)」是源代码，不用下载。
 
-GitHub 打不开或者下载很慢：先换成手机流量或者别的 Wi-Fi 再试，很多时候就好了；也可以让 AI 帮你装（见下面方法二），它会换加速地址下载，并核对文件和官方的一样。
+GitHub 打不开或者下载很慢：
+
+- 先换成手机流量或者别的 Wi-Fi 再试，很多时候就好了
+- 用国内备用下载（蓝奏云）：[https://wwary.lanzoub.com/b01i5zvujg](https://wwary.lanzoub.com/b01i5zvujg)，提取码 `47il`，打开后点 LiteCast.apk 下载。里面是从发布页原样传上去的同一个文件，新版本以 GitHub 为准；想核对的话，SHA-256 写在发布页说明的末尾
+- 让 AI 帮你装（见下面方法二），它会换加速地址下载，并核对文件和官方的一样
 
 ## 安装
 
@@ -317,7 +321,7 @@ cd LiteCast
 
 为了支持 Android 5.x，Compose 停在 1.9（BOM 2025.11.01）、Media3 停在 1.8：这两个库更新的版本要求 Android 6.0。升级它们之前先确认 minSdk 还是 21。
 
-**发布新版本**：签名钥匙存在仓库的加密 Secrets 里（`KEYSTORE_BASE64` 是 `base64 -w0 litecast-release.jks` 的输出，另外三个是 `KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`）。改好 `app/build.gradle.kts` 里的 `versionCode` 和 `versionName`，把发布说明写进 `docs/release-notes/<版本号>.md`，推到 main，然后在 Actions → Release → Run workflow 运行一次：它会跑测试、签名打包、核对证书指纹，再创建 `v<版本号>` 发布页，附上 `LiteCast.apk` 和它的 SHA-256。勾选 dry run 只打包检查、不发布。每个版本都叫 `LiteCast.apk`，README 里的下载链接才会一直指向最新版。
+**发布新版本**：签名钥匙存在仓库的加密 Secrets 里（`KEYSTORE_BASE64` 是 `base64 -w0 litecast-release.jks` 的输出，另外三个是 `KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`）。改好 `app/build.gradle.kts` 里的 `versionCode` 和 `versionName`，把发布说明写进 `docs/release-notes/<版本号>.md`，推到 main，然后在 Actions → Release → Run workflow 运行一次：它会跑测试、签名打包、核对证书指纹，再创建 `v<版本号>` 发布页，附上 `LiteCast.apk` 和它的 SHA-256。勾选 dry run 只打包检查、不发布。每个版本都叫 `LiteCast.apk`，README 里的下载链接才会一直指向最新版。发布后，把新的 LiteCast.apk 传到蓝奏云文件夹「轻投LiteCast」，删掉旧的，国内备用下载才是最新的。
 
 在自己电脑上打包：在 `local.properties` 里写上
 
