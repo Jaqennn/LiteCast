@@ -53,7 +53,7 @@ The app decides the quality: DLNA only hands the TV a URL (Bilibili gives third-
 - Not supported: Android 4.4 and older; non-Android systems such as Samsung Tizen and LG webOS; old TVs that cannot install apps at all. Huawei and Honor smart screens have not been tried
 - How to tell: Settings → About shows an Android version, or the TV can install third-party app stores
 
-Tested: Sony X90J (Chinese market, Android 10), the author's own TV — mirroring, AirPlay video and music and DLNA all work. Android 5.0–5.1 has not been tried on a real TV yet. Please [report your TV](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml), working or not.
+Tested: Sony X90J (Chinese market, Android 12; the system reports the model as BRAVIA 4K VH2), the author's own TV, on 0.2.1 — mirroring, AirPlay video and music and DLNA all work (Douyin casts at 1080p), alongside Lebo. Android 5.0–5.1 has not been tried on a real TV yet. Please [report your TV](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml), working or not.
 
 ## Download
 

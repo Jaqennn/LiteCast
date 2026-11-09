@@ -69,7 +69,7 @@
 
 | 电视 | 系统 | 情况 |
 |---|---|---|
-| 索尼 X90J 国行 | Android 10 | ✅ 作者自用：屏幕镜像、AirPlay 视频和音乐、视频 App 投屏都正常 |
+| 索尼 X90J 国行（系统里的型号写作 BRAVIA 4K VH2） | Android 12 | ✅ 作者自用（0.2.1）：屏幕镜像、AirPlay 视频和音乐、视频 App 投屏都正常，抖音投屏 1080P；和乐播同时开着不冲突 |
 
 Android 5.0–5.1 还没有真机实测。你的电视能用或不能用，都欢迎 [填问卷告诉我们](https://wj.qq.com/s2/28601337/57hw/)（不用注册，也可以 [在 GitHub 上提](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml)），会整理进这张表。
 
