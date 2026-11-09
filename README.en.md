@@ -100,6 +100,7 @@ LiteCast changes no system settings and disables nothing, so uninstalling restor
 
 ## FAQ
 
+- **Hide Lebo**: it is a system app and can't be uninstalled; "Uninstall updates" only rolls it back to the factory version, which keeps running and tends to update itself again. Disable it instead (on Chinese-market Sony TVs: 主菜单 → 我的应用 → 乐播投屏 → hold OK → 信息 → 停用). It disappears from the app list and from phones' cast lists; re-enable it from the system settings' app list.
 - **The phone doesn't list the TV**: phone and TV must be on the same network (guest networks and AP isolation block discovery); turn off the phone's VPN; on an iPhone, allow Local Network for the video app. On a TV with Lebo it can take a few seconds to appear.
 - **A cast doesn't show up**: allow Display over other apps, or open LiteCast first.
 - **YouTube keeps loading**: with AirPlay video the TV downloads from YouTube itself, so the TV's network has to reach it; screen mirroring works regardless.
