@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">AirPlay Server</string>
+    <string name="app_name">LiteCast</string>
 
     <!-- Notification -->
-    <string name="notification_channel">AirPlay Service</string>
-    <string name="notification_title">AirPlay Server Running</string>
-    <string name="notification_text">Accepting AirPlay connections</string>
+    <string name="notification_channel">Casting receiver</string>
+    <string name="notification_title">LiteCast is running</string>
+    <string name="notification_text">Receiving AirPlay and DLNA casts</string>
     <string name="notification_pin_title">AirPlay PIN Required</string>
     <string name="notification_pin_text">PIN: %1$s</string>
     <string name="stop_service">Stop</string>
@@ -87,9 +87,9 @@
     <string name="setting_server_name">Server name</string>
     <string name="setting_server_port">Server port</string>
     <string name="setting_auto_start">Start server automatically</string>
-    <string name="setting_auto_start_desc">Start the AirPlay server when the app launches</string>
+    <string name="setting_auto_start_desc">Start receiving AirPlay and DLNA casts when the app opens</string>
     <string name="setting_boot_auto_start">Start server at boot</string>
-    <string name="setting_boot_auto_start_desc">Start the AirPlay server when the device starts</string>
+    <string name="setting_boot_auto_start_desc">Start receiving AirPlay and DLNA casts when the TV turns on</string>
     <string name="setting_run_in_background">Run in background</string>
     <string name="setting_run_in_background_desc">Keep the server running after leaving the app</string>
 

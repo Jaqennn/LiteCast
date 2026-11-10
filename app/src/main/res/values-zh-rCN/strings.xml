@@ -88,9 +88,9 @@
     <string name="setting_server_name">设备名称</string>
     <string name="setting_server_port">服务端口</string>
     <string name="setting_auto_start">自动启动服务</string>
-    <string name="setting_auto_start_desc">打开应用时启动 AirPlay 服务</string>
+    <string name="setting_auto_start_desc">打开轻投时开始接收 AirPlay 和 DLNA 投屏</string>
     <string name="setting_boot_auto_start">开机启动服务</string>
-    <string name="setting_boot_auto_start_desc">设备开机时启动 AirPlay 服务</string>
+    <string name="setting_boot_auto_start_desc">电视开机时开始接收 AirPlay 和 DLNA 投屏</string>
     <string name="setting_run_in_background">后台运行</string>
     <string name="setting_run_in_background_desc">离开应用后保持服务运行</string>
 

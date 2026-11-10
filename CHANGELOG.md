@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- English: the notification now says "LiteCast is running · Receiving AirPlay and DLNA casts"
+  instead of the upstream "AirPlay Server Running", and the auto-start settings say they start
+  both AirPlay and DLNA (the Chinese text says the same)
+
 ## 0.2.1
 
 - A Feedback button on the home screen (and Feedback in Settings) opens a page with the survey's
