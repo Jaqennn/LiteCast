@@ -14,6 +14,9 @@ import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.media.AudioManager
 import android.os.Binder
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -59,6 +62,7 @@ import io.github.jqssun.airplay.ui.isTvDevice
 import io.github.litecast.net.LanProxyBypass
 import io.github.jqssun.airplay.viewmodel.DebugInfo
 import io.github.litecast.LiteCast
+import io.github.litecast.ReceiverKeepAlive
 import io.github.litecast.dlna.AvTransport
 import io.github.litecast.dlna.DlnaRenderer
 import io.github.litecast.dlna.MediaProbe
@@ -96,6 +100,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     private var nsdManager: NsdServiceManager? = null
     private var usbAdvertiser: UsbMdnsAdvertiser? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
     private var foregroundStarted = false
     private var lastOrientation = Configuration.ORIENTATION_UNDEFINED
 
@@ -431,14 +436,28 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     // LiteCast: always-on TV receiver; a permanent wake lock would keep the TV awake in standby
     private val _isTv by lazy { isTvDevice() }
+    // Only Xiaomi / MiTV / Redmi TVs and Android 6 (and older) TVs hold the lock while idle
+    private val _needsIdleKeepAlive by lazy {
+        ReceiverKeepAlive.needsIdleDiscoveryKeepAlive(
+            isTv = _isTv,
+            brand = Build.BRAND.orEmpty(),
+            manufacturer = Build.MANUFACTURER.orEmpty(),
+            model = Build.MODEL.orEmpty(),
+            sdk = Build.VERSION.SDK_INT,
+        )
+    }
 
     private fun _holdWakeLockWhileCasting() {
         lifecycleScope.launch {
-            combine(_connectionCount, _videoPlaybackActive) { senders, video -> senders > 0 || video }
+            combine(_connectionCount, _videoPlaybackActive) { senders, video ->
+                senders > 0 || video || _needsIdleKeepAlive
+            }
                 .distinctUntilChanged()
-                .collect { casting ->
+                .collect { hold ->
                     val lock = wakeLock ?: return@collect
-                    if (casting) lock.acquire() else if (lock.isHeld) lock.release()
+                    if (hold) {
+                        if (!lock.isHeld) lock.acquire()
+                    } else if (lock.isHeld) lock.release()
                 }
         }
     }
@@ -459,11 +478,13 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         // LiteCast: a TV must still be able to sleep in standby, so there the lock is only held
-        // while something is being cast (see _holdWakeLockWhileCasting); elsewhere as upstream
+        // while something is being cast (see _holdWakeLockWhileCasting). Xiaomi / old TVs also
+        // hold it while idle so phones can still find the receiver; elsewhere as upstream.
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "airplay:server").apply {
             setReferenceCounted(false)
-            if (!_isTv) acquire()
+            if (!_isTv || _needsIdleKeepAlive) acquire()
         }
+        if (_needsIdleKeepAlive) _acquireWifiLock()
 
         nsdManager = NsdServiceManager(this).apply { acquireMulticastLock() }
 
@@ -555,6 +576,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             }.apply { start() }
         } else {
             nsdManager?.register(services)
+            // NsdManager does not re-announce on its own; refresh on TVs like DLNA SSDP
+            if (_isTv || _needsIdleKeepAlive) nsdManager?.startPeriodicRefresh(AIRPLAY_NSD_REFRESH_MS)
         }
 
         _serverState.value = ServerState.RUNNING
@@ -600,6 +623,33 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         log("Advertising ${w}x${h} from next session")
     }
 
+    private fun _acquireWifiLock() {
+        if (wifiLock != null) return
+        if (!_onWifi()) return
+        val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        @Suppress("DEPRECATION")
+        wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "airplay:wifi").apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+    }
+
+    private fun _releaseWifiLock() {
+        wifiLock?.let { if (it.isHeld) it.release() }
+        wifiLock = null
+    }
+
+    private fun _onWifi(): Boolean {
+        val cm = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        return if (Build.VERSION.SDK_INT >= 23) {
+            val net = cm.activeNetwork ?: return false
+            cm.getNetworkCapabilities(net)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        } else {
+            @Suppress("DEPRECATION")
+            cm.activeNetworkInfo?.type == ConnectivityManager.TYPE_WIFI
+        }
+    }
+
     private fun _failStart() {
         _stopDlna()
         audioRenderer.detachEngine()
@@ -609,6 +659,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         }
         nsdManager?.release()
         nsdManager = null
+        _releaseWifiLock()
         wakeLock?.release()
         wakeLock = null
         _serverState.value = ServerState.ERROR
@@ -647,6 +698,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         usbAdvertiser = null
         nsdManager?.release()
         nsdManager = null
+        _releaseWifiLock()
         wakeLock?.release()
         wakeLock = null
         videoRenderer.release()
@@ -1560,7 +1612,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         private const val DLNA_LIVE_OFFSET_MS = 8_000L
         private const val DLNA_ERROR_LINGER_MS = 5_000L
         private const val SLOW_START_MS = 15_000L
-        private val DLNA_RETRY_DELAYS_S = intArrayOf(2, 5, 10)
+        // slightly more patient on transient I/O errors; 401/403/404/410 still fail immediately
+        private val DLNA_RETRY_DELAYS_S = intArrayOf(2, 5, 10, 20, 30)
+        private const val AIRPLAY_NSD_REFRESH_MS = 90_000L
         private val EXPIRED_STATUS = setOf(401, 403, 404, 410)
 
         private const val AUDIO_CONFIG_DEBOUNCE_MS = 500L

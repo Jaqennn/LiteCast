@@ -28,6 +28,9 @@
     <string name="lc_overlay_body">在系统设置里为「轻投」开启「显示在其他应用上层」，看别的节目时手机一投屏，画面就会直接弹出来。</string>
     <string name="lc_overlay_button">去开启</string>
     <string name="lc_overlay_adb">找不到这个设置？用电脑执行：adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
+    <string name="lc_keepalive_title">让轻投在后台保持可被发现</string>
+    <string name="lc_keepalive_body">这台电视在离开应用后，系统可能会把轻投停掉，手机就找不到了。请在系统设置里允许轻投忽略电池优化（或设为自启动），这样不用先打开应用也能被发现。</string>
+    <string name="lc_keepalive_button">去开启</string>
 
     <string name="lc_rename_title">手机上显示的名字</string>
     <string name="lc_rename_body">AirPlay 和 DLNA 共用这个名字。保存后接收会重启一下。</string>
