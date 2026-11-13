@@ -6,6 +6,7 @@
 package io.github.litecast.tv
 
 import android.os.Build
+import android.os.PowerManager
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -72,9 +73,11 @@ import io.github.jqssun.airplay.Prefs
 import io.github.jqssun.airplay.R
 import io.github.jqssun.airplay.get
 import io.github.jqssun.airplay.hasLocalNetwork
+import io.github.jqssun.airplay.ui.isTvDevice
 import io.github.jqssun.airplay.observe
 import io.github.jqssun.airplay.service.AirPlayService
 import io.github.litecast.LiteCast
+import io.github.litecast.ReceiverKeepAlive
 import io.github.litecast.dlna.DlnaRenderer
 import java.net.Inet4Address
 import kotlinx.coroutines.delay
@@ -125,6 +128,11 @@ class HomeActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        // BIND_AUTO_CREATE alone is not a start; leave a started foreground service behind
+        // so leaving the home screen does not tear the receiver down.
+        if (getSharedPreferences(Prefs.NAME, MODE_PRIVATE).getBoolean(LiteCast.PREF_RECEIVER_ENABLED, true)) {
+            ServiceBinding.startReceiver(this)
+        }
         binding.unbind()
         super.onStop()
     }
@@ -146,6 +154,7 @@ internal data class HomeUi(
     val dlnaEnabled: Boolean,
     val ip: String,
     val canPopUp: Boolean,
+    val keepAliveHint: Boolean = false,
     val sessionActive: Boolean,
     val receiverPaused: Boolean,
     val packageName: String,
@@ -171,6 +180,9 @@ private fun HomeScreen(svc: AirPlayService?, onSettings: () -> Unit, onFeedback:
     val canPopUp by produceState(canDrawOverlays(context)) {
         while (true) { value = canDrawOverlays(context); delay(1000) }
     }
+    val keepAliveHint by produceState(shouldPromptKeepAlive(context)) {
+        while (true) { value = shouldPromptKeepAlive(context); delay(1000) }
+    }
     var renaming by remember { mutableStateOf(false) }
 
     HomeContent(
@@ -181,6 +193,7 @@ private fun HomeScreen(svc: AirPlayService?, onSettings: () -> Unit, onFeedback:
             dlnaEnabled = dlnaEnabled,
             ip = ip,
             canPopUp = canPopUp,
+            keepAliveHint = keepAliveHint,
             sessionActive = mirroring || video || music,
             receiverPaused = svc != null && serverState == AirPlayService.ServerState.STOPPED,
             packageName = context.packageName,
@@ -190,6 +203,7 @@ private fun HomeScreen(svc: AirPlayService?, onSettings: () -> Unit, onFeedback:
         onBackToCast = { context.startActivity(LiteCast.playerIntent(context)) },
         onStartReceiver = { svc?.startServer() },
         onAllowPopUp = { openOverlaySettings(context) },
+        onAllowKeepAlive = { openKeepAliveSettings(context) },
         onFeedback = onFeedback,
     )
 
@@ -213,6 +227,7 @@ internal fun HomeContent(
     onBackToCast: () -> Unit,
     onStartReceiver: () -> Unit,
     onAllowPopUp: () -> Unit,
+    onAllowKeepAlive: () -> Unit = {},
     onFeedback: () -> Unit = {},
 ) {
     val noticeFocus = remember { FocusRequester() }
@@ -221,6 +236,7 @@ internal fun HomeContent(
     val notice = when {
         ui.receiverPaused -> Notice.PAUSED
         !ui.canPopUp -> Notice.POPUP
+        ui.keepAliveHint -> Notice.KEEPALIVE
         else -> null
     }
 
@@ -289,6 +305,13 @@ internal fun HomeContent(
                             actionModifier = Modifier.focusRequester(noticeFocus),
                             onAction = onAllowPopUp,
                         )
+                        Notice.KEEPALIVE -> NoticeBar(
+                            title = stringResource(R.string.lc_keepalive_title),
+                            body = stringResource(R.string.lc_keepalive_body),
+                            action = stringResource(R.string.lc_keepalive_button),
+                            actionModifier = Modifier.focusRequester(noticeFocus),
+                            onAction = onAllowKeepAlive,
+                        )
                         null -> Unit
                     }
                 }
@@ -314,7 +337,7 @@ internal fun HomeContent(
     }
 }
 
-private enum class Notice { PAUSED, POPUP }
+private enum class Notice { PAUSED, POPUP, KEEPALIVE }
 
 @Composable
 private fun NoticeBar(
@@ -474,6 +497,21 @@ internal fun SettingsContent(
 // Before Android 6.0 the permission is granted when the app is installed
 internal fun canDrawOverlays(context: Context): Boolean = Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(context)
 
+// Only Xiaomi / old TVs, and only when Doze-style battery restrictions still apply.
+internal fun shouldPromptKeepAlive(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < 23) return false
+    if (!ReceiverKeepAlive.needsIdleDiscoveryKeepAlive(
+            isTv = context.isTvDevice(),
+            brand = Build.BRAND.orEmpty(),
+            manufacturer = Build.MANUFACTURER.orEmpty(),
+            model = Build.MODEL.orEmpty(),
+            sdk = Build.VERSION.SDK_INT,
+        )
+    ) return false
+    val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+    return !pm.isIgnoringBatteryOptimizations(context.packageName)
+}
+
 internal fun openOverlaySettings(context: Context) {
     val pkg = Uri.parse("package:${context.packageName}")
     val candidates = listOf(
@@ -482,6 +520,20 @@ internal fun openOverlaySettings(context: Context) {
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
         Intent(Settings.ACTION_SETTINGS),
     )
+    startFirstAvailable(context, candidates)
+}
+
+// Opens the system list or the app page; no extra permission is declared for a direct request.
+internal fun openKeepAliveSettings(context: Context) {
+    val candidates = listOf(
+        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
+        Intent(Settings.ACTION_SETTINGS),
+    )
+    startFirstAvailable(context, candidates)
+}
+
+private fun startFirstAvailable(context: Context, candidates: List<Intent>) {
     for (intent in candidates) {
         if (runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess) return
     }

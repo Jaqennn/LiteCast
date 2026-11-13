@@ -29,6 +29,9 @@
     <string name="lc_overlay_body">Allow “Display over other apps” for LiteCast, so a cast opens on screen even while you watch something else.</string>
     <string name="lc_overlay_button">Allow</string>
     <string name="lc_overlay_adb">No such setting? From a computer: adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
+    <string name="lc_keepalive_title">Keep LiteCast discoverable in the background</string>
+    <string name="lc_keepalive_body">On this TV, the system may stop LiteCast when you leave the app, so the phone cannot find it. Allow LiteCast to ignore battery optimizations (or set it to autostart) so it can stay discoverable.</string>
+    <string name="lc_keepalive_button">Allow</string>
 
     <string name="lc_rename_title">Name shown on phones</string>
     <string name="lc_rename_body">Used for both AirPlay and DLNA. Receiving restarts briefly after saving.</string>
