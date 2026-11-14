@@ -110,18 +110,18 @@ jobs:
             adb shell wm size 1920x1080
             adb shell wm density 240
             adb shell am instrument -w -r -e class io.github.litecast.LegacyStartupTest io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
-            grep -Eq '^OK \([0-9]+ tests?\)' instrumentation.txt
+            grep -Eq '^OK \(3 tests\)' instrumentation.txt
             adb exec-out run-as io.github.litecast cat files/diagnostic-preview.png > diagnostic-preview.png
             adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#prepareCrashRecord io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee recovery-save.txt
-            grep -Eq '^OK \([0-9]+ tests?\)' recovery-save.txt
+            grep -Eq '^OK \(1 test\)' recovery-save.txt
             adb shell am force-stop io.github.litecast
             adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#verifyCrashRecordAfterRestart io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee recovery-reload.txt
-            grep -Eq '^OK \([0-9]+ tests?\)' recovery-reload.txt
+            grep -Eq '^OK \(1 test\)' recovery-reload.txt
             adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#prepareInterruptedStartup io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee interrupted-save.txt
-            grep -Eq '^OK \([0-9]+ tests?\)' interrupted-save.txt
+            grep -Eq '^OK \(1 test\)' interrupted-save.txt
             adb shell am force-stop io.github.litecast
             adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#verifyInterruptedStartupAfterRestart io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee interrupted-reload.txt
-            grep -Eq '^OK \([0-9]+ tests?\)' interrupted-reload.txt
+            grep -Eq '^OK \(1 test\)' interrupted-reload.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

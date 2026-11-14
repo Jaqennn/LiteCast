@@ -457,6 +457,15 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
         _startServer(ensureServiceStarted = true)
     }
 
+    private fun _ensureReceiverWakeLock() {
+        if (wakeLock != null) return
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "airplay:server").apply {
+            setReferenceCounted(false)
+            if (!_isTv) acquire()
+        }
+    }
+
     private fun _startServer(ensureServiceStarted: Boolean) {
         if (isReceiverActive || Diagnostics.needsRecovery()) return
         if (!hasLocalNetwork()) {
@@ -465,11 +474,7 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
             return
         }
         val effectiveName = prefs[Prefs.SERVER_NAME].ifBlank { Prefs.SERVER_NAME.def }
-        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "airplay:server").apply {
-            setReferenceCounted(false)
-            if (!_isTv) acquire()
-        }
+        _ensureReceiverWakeLock()
         // Each receiver owns its startup and cleanup. AirPlay failure must not take DLNA down.
         _tryStartDlna(effectiveName)
         Diagnostics.beginStartup("AirPlay native load / initialization")
@@ -1208,6 +1213,7 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
             _tryStartDlna(prefs[Prefs.SERVER_NAME])
         }
         if (isReceiverActive && !foregroundStarted) {
+            _ensureReceiverWakeLock()
             ContextCompat.startForegroundService(this, Intent(this, AirPlayService::class.java))
             promoteToForeground()
         } else if (!isReceiverActive && foregroundStarted) {

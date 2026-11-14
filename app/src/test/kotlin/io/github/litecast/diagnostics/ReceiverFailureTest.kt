@@ -14,6 +14,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowPowerManager
 import org.robolectric.util.ReflectionHelpers
 
 @RunWith(RobolectricTestRunner::class)
@@ -45,8 +46,19 @@ class ReceiverFailureTest {
             assertTrue(service.isReceiverActive)
             assertEquals("LC-NATIVE-LOAD", Diagnostics.reports.value?.code)
             assertTrue(Diagnostics.reports.value!!.detail.contains("EVP_CIPHER_CTX_reset"))
+            val firstLock = ShadowPowerManager.getLatestWakeLock()
+            assertTrue(firstLock.isHeld)
+            service.setDlnaEnabled(false)
+            assertFalse(service.isReceiverActive)
+            assertFalse(firstLock.isHeld)
+            service.setDlnaEnabled(true)
+            assertTrue(service.isReceiverActive)
+            assertEquals(AirPlayService.ServerState.ERROR, service.serverState.value)
+            val restartedLock = ShadowPowerManager.getLatestWakeLock()
+            assertTrue(restartedLock.isHeld)
             service.stopServer()
             assertFalse(service.isReceiverActive)
+            assertFalse(restartedLock.isHeld)
             assertEquals(DlnaRenderer.Status.STOPPED, service.dlnaStatus.value)
         } finally {
             controller.destroy()
