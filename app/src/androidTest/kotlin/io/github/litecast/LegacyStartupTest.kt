@@ -11,14 +11,17 @@ import io.github.litecast.tv.DiagnosticActivity
 import io.github.litecast.diagnostics.Diagnostics
 import android.graphics.Bitmap
 import org.junit.Assert.assertFalse
+import org.junit.FixMethodOrder
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.junit.runners.MethodSorters
 import java.io.File
 
 /** Runs in a real Android process, including old bionic, instead of JVM shadows. */
 @RunWith(AndroidJUnit4::class)
+@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 class LegacyStartupTest {
-    @Test fun nativeLibraryLoadsAlongsideOldSystemCrypto() {
+    @Test fun aNativeLibraryLoadsAlongsideOldSystemCrypto() {
         if (Build.VERSION.SDK_INT <= 22) {
             val path = if (Build.SUPPORTED_ABIS.first().contains("64")) "/system/lib64/libcrypto.so" else "/system/lib/libcrypto.so"
             if (File(path).exists()) System.load(path)
@@ -28,7 +31,7 @@ class LegacyStartupTest {
         NativeBridge.nativeSetDefaultStreamValues(48000, 192)
     }
 
-    @Test fun homeActivityStartsOnTheActualSystem() {
+    @Test fun bHomeActivityStartsOnTheActualSystem() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val activity = instrumentation.startActivitySync(Intent(instrumentation.targetContext, HomeActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -37,7 +40,7 @@ class LegacyStartupTest {
         instrumentation.runOnMainSync { activity.finish() }
     }
 
-    @Test fun diagnosticPageOpensWithoutStartingTheReceiver() {
+    @Test fun cDiagnosticPageOpensWithoutStartingTheReceiver() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         Diagnostics.record("LC-NATIVE-LOAD", "AirPlay native load",
             UnsatisfiedLinkError("cannot locate symbol EVP_CIPHER_CTX_reset referenced by libairplay_native.so"))

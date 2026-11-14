@@ -11,7 +11,7 @@ val localProps = Properties().apply {
     rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
 }
 
-// LiteCast: TVs are ARM (many still run a 32-bit userland); -PwithX86 adds x86_64 for emulators
+// LiteCast: TVs are ARM (many still run a 32-bit userland); -PwithX86 adds x86/x86_64 for emulators
 val allAbis = listOf("arm64-v8a", "armeabi-v7a") +
     if (providers.gradleProperty("withX86").isPresent) listOf("x86", "x86_64") else emptyList()
 
@@ -82,6 +82,7 @@ android {
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true
         unitTests.all { test ->
+            test.testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
             // -Pscreenshots renders the TV UI to docs/screenshots (Robolectric native graphics)
             if (providers.gradleProperty("screenshots").isPresent) {
                 test.systemProperty("litecast.screenshots", "true")

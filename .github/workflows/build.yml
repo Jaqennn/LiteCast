@@ -28,6 +28,15 @@ jobs:
       - name: Unit tests and lint
         run: ./gradlew --stacktrace testDebugUnitTest lintDebug
 
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-tests-and-lint
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+            app/build/reports/lint-results-debug.*
+
       - name: Build debug APK
         run: |
           export SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
@@ -83,9 +92,21 @@ jobs:
           script: |
             adb install apks/debug/app-debug.apk
             adb install apks/androidTest/debug/app-debug-androidTest.apk
-            adb shell am instrument -w -r io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
+            adb shell wm size 1920x1080
+            adb shell wm density 240
+            adb shell am instrument -w -r -e class io.github.litecast.LegacyStartupTest io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
             grep -Eq '^OK \([0-9]+ tests?\)' instrumentation.txt
             adb exec-out run-as io.github.litecast cat files/diagnostic-preview.png > diagnostic-preview.png
+            adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#prepareCrashRecord io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee recovery-save.txt
+            grep -Eq '^OK \([0-9]+ tests?\)' recovery-save.txt
+            adb shell am force-stop io.github.litecast
+            adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#verifyCrashRecordAfterRestart io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee recovery-reload.txt
+            grep -Eq '^OK \([0-9]+ tests?\)' recovery-reload.txt
+            adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#prepareInterruptedStartup io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee interrupted-save.txt
+            grep -Eq '^OK \([0-9]+ tests?\)' interrupted-save.txt
+            adb shell am force-stop io.github.litecast
+            adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#verifyInterruptedStartupAfterRestart io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee interrupted-reload.txt
+            grep -Eq '^OK \([0-9]+ tests?\)' interrupted-reload.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -93,3 +114,5 @@ jobs:
           path: |
             instrumentation.txt
             diagnostic-preview.png
+            recovery-*.txt
+            interrupted-*.txt
