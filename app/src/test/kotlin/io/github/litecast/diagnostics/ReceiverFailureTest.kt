@@ -11,6 +11,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.util.ReflectionHelpers
 
@@ -18,6 +20,9 @@ import org.robolectric.util.ReflectionHelpers
 @Config(sdk = [23, 29])
 class ReceiverFailureTest {
     @Before fun provideEglSentinel() {
+        val app = RuntimeEnvironment.getApplication()
+        // A real install grants this signature permission from AndroidX's merged manifest.
+        shadowOf(app).grantPermissions("${app.packageName}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")
         // Robolectric stubs EGL's native class initializer. This test doesn't render frames,
         // but VideoPipeline still needs the non-null sentinel supplied by a real device.
         ReflectionHelpers.setStaticField(EGL14::class.java, "EGL_NO_SURFACE",
