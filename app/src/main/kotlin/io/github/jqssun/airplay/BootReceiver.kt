@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import io.github.jqssun.airplay.service.AirPlayService
 import io.github.litecast.LiteCast
+import io.github.litecast.diagnostics.Diagnostics
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -18,6 +19,7 @@ class BootReceiver : BroadcastReceiver() {
         val prefs = context.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE)
         if (!prefs[Prefs.BOOT_AUTO_START]) return
         if (!prefs.getBoolean(LiteCast.PREF_RECEIVER_ENABLED, true)) return
+        if (Diagnostics.needsRecovery()) return
 
         val serviceIntent = Intent(context, AirPlayService::class.java)
             .setAction(AirPlayService.ACTION_START_SERVER)

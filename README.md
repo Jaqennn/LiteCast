@@ -259,6 +259,8 @@ adb shell am start -n io.github.litecast/io.github.litecast.tv.HomeActivity
 
 ## 反馈
 
+0.2.2-beta.1 增加了可拍照的「故障记录」页面：主页「反馈」→「故障记录」。启动出错时会尽量保存错误，退出后再次打开可查看。记录仅保存在本机；部分底层崩溃只能留下最后启动阶段。具体说明见 [问题反馈与故障记录](docs/diagnostics.md)。
+
 装了轻投的话最方便：主页右上角点「反馈」，电视上会显示问卷二维码，旁边写好了这台电视的品牌、型号和安卓版本，手机扫码照着填就行。
 
 <img src="docs/screenshots/feedback.png" width="480" alt="轻投的反馈页：问卷二维码和自动读出的电视信息">

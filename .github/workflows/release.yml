@@ -83,6 +83,7 @@ jobs:
         run: |
           export SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
           ./gradlew --stacktrace testDebugUnitTest lintDebug assembleRelease
+          python3 tools/check_native_apk.py app/build/outputs/apk/release/app-release.apk
           cp app/build/outputs/apk/release/app-release.apk LiteCast.apk
           rm -f "$RUNNER_TEMP/release.jks" local.properties
 

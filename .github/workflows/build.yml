@@ -28,14 +28,91 @@ jobs:
       - name: Unit tests and lint
         run: ./gradlew --stacktrace testDebugUnitTest lintDebug
 
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-tests-and-lint
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+            app/build/reports/lint-results-debug.*
+
       - name: Build debug APK
         run: |
           export SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
           version=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
-          ./gradlew --stacktrace assembleDebug
+          ./gradlew --stacktrace -PwithX86 assembleDebug assembleDebugAndroidTest
+          python3 tools/check_native_apk.py app/build/outputs/apk/debug/app-debug.apk
           cp app/build/outputs/apk/debug/app-debug.apk "LiteCast-$version-debug.apk"
 
       - uses: actions/upload-artifact@v4
         with:
           name: LiteCast-debug
           path: LiteCast-*-debug.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LiteCast-test-apks
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+  compatibility:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: 21
+            arch: x86
+          - api: 22
+            arch: x86
+          - api: 23
+            arch: x86
+          - api: 31
+            arch: x86_64
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: LiteCast-test-apks
+          path: apks
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: ${{ matrix.arch }}
+          target: default
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            adb install apks/debug/app-debug.apk
+            adb install apks/androidTest/debug/app-debug-androidTest.apk
+            adb shell wm size 1920x1080
+            adb shell wm density 240
+            adb shell am instrument -w -r -e class io.github.litecast.LegacyStartupTest io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
+            grep -Eq '^OK \([0-9]+ tests?\)' instrumentation.txt
+            adb exec-out run-as io.github.litecast cat files/diagnostic-preview.png > diagnostic-preview.png
+            adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#prepareCrashRecord io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee recovery-save.txt
+            grep -Eq '^OK \([0-9]+ tests?\)' recovery-save.txt
+            adb shell am force-stop io.github.litecast
+            adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#verifyCrashRecordAfterRestart io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee recovery-reload.txt
+            grep -Eq '^OK \([0-9]+ tests?\)' recovery-reload.txt
+            adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#prepareInterruptedStartup io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee interrupted-save.txt
+            grep -Eq '^OK \([0-9]+ tests?\)' interrupted-save.txt
+            adb shell am force-stop io.github.litecast
+            adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#verifyInterruptedStartupAfterRestart io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee interrupted-reload.txt
+            grep -Eq '^OK \([0-9]+ tests?\)' interrupted-reload.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compatibility-api-${{ matrix.api }}
+          path: |
+            instrumentation.txt
+            diagnostic-preview.png
+            recovery-*.txt
+            interrupted-*.txt

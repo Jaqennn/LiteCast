@@ -59,6 +59,7 @@ import io.github.jqssun.airplay.ui.isTvDevice
 import io.github.litecast.net.LanProxyBypass
 import io.github.jqssun.airplay.viewmodel.DebugInfo
 import io.github.litecast.LiteCast
+import io.github.litecast.diagnostics.Diagnostics
 import io.github.litecast.dlna.AvTransport
 import io.github.litecast.dlna.DlnaRenderer
 import io.github.litecast.dlna.MediaProbe
@@ -90,7 +91,7 @@ data class VideoPlaybackInfo(
     val seekable: Boolean = true,
 )
 
-class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     private var nativeHandle = 0L
     private var nsdManager: NsdServiceManager? = null
@@ -123,6 +124,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     private val _serverPort = MutableStateFlow(0)
     val serverPort = _serverPort.asStateFlow()
     private var dlnaRenderer: DlnaRenderer? = null
+    val isReceiverActive: Boolean
+        get() = _serverState.value == ServerState.RUNNING || dlnaRenderer != null
     private var _dlnaUri = ""
     private var _dlnaTitle = ""
     private var _dlnaMime = ""
@@ -407,6 +410,10 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
+        if (Diagnostics.needsRecovery()) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         // LiteCast (after sony-airplay-tv): a TV receiver must come back after the system reclaims it
         if (intent?.action == ACTION_START_SERVER ||
             (intent == null && prefs.getBoolean(LiteCast.PREF_RECEIVER_ENABLED, true))) {
@@ -416,17 +423,19 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
                 promoteToForeground()
             } catch (e: IllegalStateException) {
                 log("Foreground start refused: ${e.message}")
+                Diagnostics.record("LC-SERVICE-START", "foreground service", e)
                 stopSelf(startId)
                 return START_NOT_STICKY
             } catch (e: SecurityException) {
                 log("Foreground start refused: ${e.message}")
+                Diagnostics.record("LC-SERVICE-START", "foreground service", e)
                 stopSelf(startId)
                 return START_NOT_STICKY
             }
             _startServer(ensureServiceStarted = false)
-            if (_serverState.value != ServerState.RUNNING) stopSelf(startId)
+            if (!isReceiverActive) stopSelf(startId)
         }
-        return if (_serverState.value == ServerState.RUNNING) START_STICKY else START_NOT_STICKY
+        return if (isReceiverActive) START_STICKY else START_NOT_STICKY
     }
 
     // LiteCast: always-on TV receiver; a permanent wake lock would keep the TV awake in standby
@@ -449,22 +458,61 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     private fun _startServer(ensureServiceStarted: Boolean) {
-        if (_serverState.value == ServerState.RUNNING) return
+        if (isReceiverActive || Diagnostics.needsRecovery()) return
         if (!hasLocalNetwork()) {
-            log("Local network permission denied")
-            _failStart()
+            _serverState.value = ServerState.ERROR
+            Diagnostics.record("LC-NETWORK-PERMISSION", "receiver startup", "Local network permission denied")
             return
         }
         val effectiveName = prefs[Prefs.SERVER_NAME].ifBlank { Prefs.SERVER_NAME.def }
-
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        // LiteCast: a TV must still be able to sleep in standby, so there the lock is only held
-        // while something is being cast (see _holdWakeLockWhileCasting); elsewhere as upstream
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "airplay:server").apply {
             setReferenceCounted(false)
             if (!_isTv) acquire()
         }
+        // Each receiver owns its startup and cleanup. AirPlay failure must not take DLNA down.
+        _tryStartDlna(effectiveName)
+        Diagnostics.beginStartup("AirPlay native load / initialization")
+        try {
+            startAirplay(effectiveName)
+        } catch (error: LinkageError) {
+            Diagnostics.record("LC-NATIVE-LOAD", "AirPlay native load / initialization", error)
+            _failStart()
+        } catch (error: Exception) {
+            Diagnostics.record("LC-AIRPLAY-START", "AirPlay startup", error)
+            _failStart()
+        } finally {
+            Diagnostics.endStartup()
+        }
+        if (isReceiverActive) {
+            if (ensureServiceStarted) {
+                ContextCompat.startForegroundService(this, Intent(this, AirPlayService::class.java))
+            }
+            promoteToForeground()
+        } else {
+            wakeLock?.takeIf { it.isHeld }?.release()
+            wakeLock = null
+            if (foregroundStarted) ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            foregroundStarted = false
+        }
+    }
 
+    private fun _tryStartDlna(name: String) {
+        try {
+            _startDlna(name)
+        } catch (error: Exception) {
+            _stopDlna()
+            _dlnaStatus.value = DlnaRenderer.Status.ERROR
+            Diagnostics.record("LC-DLNA-START", "DLNA startup", error)
+        } catch (error: LinkageError) {
+            _stopDlna()
+            _dlnaStatus.value = DlnaRenderer.Status.ERROR
+            Diagnostics.record("LC-DLNA-START", "DLNA startup", error)
+        }
+    }
+
+    protected open fun startAirplay(effectiveName: String) {
+        NativeBridge.ensureLoaded()
         nsdManager = NsdServiceManager(this).apply { acquireMulticastLock() }
 
         val hwAddr = getHwAddr()
@@ -482,9 +530,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         )
         nativeHandle = NativeBridge.nativeInit(this, hwAddr, effectiveName, keyFile, nohold, requirePin)
         if (nativeHandle == 0L) {
-            log("Native init failed")
-            _failStart()
-            return
+            throw IllegalStateException("AirPlay nativeInit returned no server")
         }
         audioRenderer.attachEngine(nativeHandle)
 
@@ -534,9 +580,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             port = NativeBridge.nativeStart(nativeHandle, 0)
         }
         if (port < 0) {
-            log("Failed to start on port $requestedPort")
-            _failStart()
-            return
+            throw IllegalStateException("AirPlay could not bind a listening port")
         }
 
         // register mdns services
@@ -559,12 +603,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
         _serverState.value = ServerState.RUNNING
         _serverPort.value = port
-        _startDlna(effectiveName)
-        if (ensureServiceStarted) {
-            ContextCompat.startForegroundService(this, Intent(this, AirPlayService::class.java))
-        }
-        promoteToForeground()
-        log("Server started on port $port")
+        log("AirPlay server started on port $port")
     }
 
     private fun _orientationFollowsDevice(): Boolean =
@@ -601,21 +640,18 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     private fun _failStart() {
-        _stopDlna()
         audioRenderer.detachEngine()
         if (nativeHandle != 0L) {
-            NativeBridge.nativeDestroy(nativeHandle)
+            runCatching { NativeBridge.nativeStop(nativeHandle) }
+            runCatching { NativeBridge.nativeDestroy(nativeHandle) }
             nativeHandle = 0L
         }
-        nsdManager?.release()
+        runCatching { usbAdvertiser?.stop() }
+        usbAdvertiser = null
+        runCatching { nsdManager?.release() }
         nsdManager = null
-        wakeLock?.release()
-        wakeLock = null
+        _serverPort.value = 0
         _serverState.value = ServerState.ERROR
-        if (foregroundStarted) {
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-            foregroundStarted = false
-        }
     }
 
     fun stopServer() {
@@ -627,10 +663,10 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     private fun _restartServer() {
-        if (_serverState.value != ServerState.RUNNING) return
+        if (!isReceiverActive) return
         _shutdown()
         _startServer(ensureServiceStarted = false)
-        if (_serverState.value != ServerState.RUNNING) stopSelf()
+        if (!isReceiverActive) stopSelf()
     }
 
     private fun _shutdown() {
@@ -647,7 +683,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         usbAdvertiser = null
         nsdManager?.release()
         nsdManager = null
-        wakeLock?.release()
+        wakeLock?.takeIf { it.isHeld }?.release()
         wakeLock = null
         videoRenderer.release()
         airPlayVideoPlayer.stop()
@@ -1168,8 +1204,18 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         if (!enabled) {
             if (_isDlnaActive()) _endVideoPlayback("DLNA turned off")
             _stopDlna()
-        } else if (_serverState.value == ServerState.RUNNING) {
-            _startDlna(prefs[Prefs.SERVER_NAME])
+        } else if (prefs.getBoolean(LiteCast.PREF_RECEIVER_ENABLED, true)) {
+            _tryStartDlna(prefs[Prefs.SERVER_NAME])
+        }
+        if (isReceiverActive && !foregroundStarted) {
+            ContextCompat.startForegroundService(this, Intent(this, AirPlayService::class.java))
+            promoteToForeground()
+        } else if (!isReceiverActive && foregroundStarted) {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            foregroundStarted = false
+            wakeLock?.takeIf { it.isHeld }?.release()
+            wakeLock = null
+            stopSelf()
         }
     }
 
@@ -1183,7 +1229,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             host = _dlnaHost,
             log = ::log,
         )
-        renderer.onStatusChanged = { _dlnaStatus.value = it }
+        renderer.onStatusChanged = { if (dlnaRenderer === renderer) _dlnaStatus.value = it }
         dlnaRenderer = renderer
         renderer.start()
     }
@@ -1530,7 +1576,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     private fun _updateMediaNotification() {
-        if (_serverState.value != ServerState.RUNNING) return
+        if (!isReceiverActive) return
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(NOTIFICATION_ID, _buildMediaNotification())
     }
