@@ -13,7 +13,7 @@ val localProps = Properties().apply {
 
 // LiteCast: TVs are ARM (many still run a 32-bit userland); -PwithX86 adds x86_64 for emulators
 val allAbis = listOf("arm64-v8a", "armeabi-v7a") +
-    if (providers.gradleProperty("withX86").isPresent) listOf("x86_64") else emptyList()
+    if (providers.gradleProperty("withX86").isPresent) listOf("x86", "x86_64") else emptyList()
 
 android {
     namespace = "io.github.jqssun.airplay"
@@ -34,10 +34,11 @@ android {
     defaultConfig {
         // LiteCast: own application id so it installs next to upstream; namespace stays upstream's
         applicationId = "io.github.litecast"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 21
         targetSdk = 37
-        versionCode = 4
-        versionName = "0.2.1"
+        versionCode = 5
+        versionName = "0.2.2-beta.1"
 
         externalNativeBuild {
             cmake {
@@ -165,6 +166,9 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
 
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)

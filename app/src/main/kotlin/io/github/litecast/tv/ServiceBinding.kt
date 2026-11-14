@@ -48,8 +48,15 @@ class ServiceBinding(private val activity: Activity) {
     companion object {
         /** Starts the foreground receiver (same path the boot receiver uses). */
         fun startReceiver(context: Context) {
+            if (io.github.litecast.diagnostics.Diagnostics.needsRecovery()) return
             val intent = Intent(context, AirPlayService::class.java).setAction(AirPlayService.ACTION_START_SERVER)
-            runCatching { ContextCompat.startForegroundService(context, intent) }
+            try {
+                ContextCompat.startForegroundService(context, intent)
+            } catch (error: IllegalStateException) {
+                io.github.litecast.diagnostics.Diagnostics.record("LC-SERVICE-START", "foreground service", error)
+            } catch (error: SecurityException) {
+                io.github.litecast.diagnostics.Diagnostics.record("LC-SERVICE-START", "foreground service", error)
+            }
         }
     }
 }

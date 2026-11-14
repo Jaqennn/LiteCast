@@ -5,6 +5,7 @@
 
 package io.github.litecast.tv
 
+import android.content.Intent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -57,11 +58,16 @@ internal fun FeedbackScreen(onBack: () -> Unit) {
 
 @Composable
 internal fun FeedbackContent(info: DeviceInfo.Info, onBack: () -> Unit) {
+    val context = LocalContext.current
     val back = remember { FocusRequester() }
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Tv.BackgroundTop, Tv.Background)))) {
         Column(Modifier.fillMaxSize().padding(horizontal = 56.dp, vertical = 40.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.lc_feedback_title), style = Tv.Title, modifier = Modifier.weight(1f))
+                PillButton(stringResource(R.string.lc_diag_title), onClick = {
+                    context.startActivity(Intent(context, DiagnosticActivity::class.java))
+                })
+                Spacer(Modifier.width(12.dp))
                 PillButton(stringResource(R.string.lc_feedback_back), Icons.AutoMirrored.Rounded.ArrowBack, Modifier.focusRequester(back), onClick = onBack)
             }
             Spacer(Modifier.height(8.dp))

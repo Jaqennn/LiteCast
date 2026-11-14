@@ -37,6 +37,12 @@
 
         <!-- LiteCast: TV home screen is the launcher entry -->
         <activity
+            android:name="io.github.litecast.tv.DiagnosticActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.NoActionBar"
+            android:configChanges="orientation|screenSize|keyboardHidden|navigation|keyboard" />
+
+        <activity
             android:name="io.github.litecast.tv.HomeActivity"
             android:exported="true"
             android:theme="@style/Theme.LiteCast"
