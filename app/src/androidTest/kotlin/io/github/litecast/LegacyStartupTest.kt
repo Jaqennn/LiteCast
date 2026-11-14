@@ -13,6 +13,7 @@ import io.github.litecast.tv.HomeActivity
 import io.github.litecast.tv.DiagnosticActivity
 import io.github.litecast.diagnostics.Diagnostics
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import org.junit.Assert.assertFalse
 import org.junit.FixMethodOrder
 import org.junit.Test
@@ -55,7 +56,19 @@ class LegacyStartupTest {
         val services = (instrumentation.targetContext.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager)
             .getRunningServices(Int.MAX_VALUE)
         assertFalse(services.any { it.service.className == AirPlayService::class.java.name })
-        val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+        // Old emulator compositors can return null from UiAutomation. The diagnostic page
+        // contains only platform views, so capture their actual measured layout as fallback.
+        val bitmap = instrumentation.uiAutomation.takeScreenshot() ?: run {
+            var rendered: Bitmap? = null
+            instrumentation.runOnMainSync {
+                val view = activity.window.decorView
+                check(view.width > 0 && view.height > 0)
+                rendered = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888).also {
+                    view.draw(Canvas(it))
+                }
+            }
+            checkNotNull(rendered)
+        }
         File(instrumentation.targetContext.filesDir, "diagnostic-preview.png").outputStream().use {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
         }
