@@ -423,10 +423,12 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
                 promoteToForeground()
             } catch (e: IllegalStateException) {
                 log("Foreground start refused: ${e.message}")
+                Diagnostics.record("LC-SERVICE-START", "foreground service", e)
                 stopSelf(startId)
                 return START_NOT_STICKY
             } catch (e: SecurityException) {
                 log("Foreground start refused: ${e.message}")
+                Diagnostics.record("LC-SERVICE-START", "foreground service", e)
                 stopSelf(startId)
                 return START_NOT_STICKY
             }

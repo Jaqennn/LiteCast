@@ -43,6 +43,6 @@ adb logcat -d -v threadtime > LiteCast-logcat.txt
 - `python3 tools/check_native_apk.py <apk>` 检查实际 APK 的每种架构，拒绝独立的 `libcrypto.so`、动态加密依赖和外露的加密符号。
 - `./gradlew testDebugUnitTest lintDebug` 验证错误脱敏、异常原因链和 AirPlay 故障后的 DLNA 生命周期。
 - `./gradlew -PwithX86 connectedDebugAndroidTest` 在模拟器实际加载原生库并打开界面；Android 5.x 测试先加载系统加密库，以覆盖同名冲突场景。
-- GitHub Build 工作流包含 API 21、22、23、31 的实际 Android 进程测试，并保存故障页截图。
+- GitHub Build 工作流包含 API 21、22、23、31 的实际 Android 进程测试，并保存故障页截图。另有分进程测试，验证保存记录后强制结束应用，再次打开仍能读取记录；常规 `connectedDebugAndroidTest` 会跳过需要跨进程运行的测试阶段。
 
 模拟器验证不代表天猫、乐视真机验证。正式发布前仍需使用 ARM32 设备测试冷启动、重启后接收、AirPlay 镜像、普通视频投屏及播放中断；索尼等新系统需要回归测试。测试结果应区分“已通过”“失败”和“待真机验证”。
