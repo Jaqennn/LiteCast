@@ -1,8 +1,10 @@
 package io.github.litecast
 
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import io.github.jqssun.airplay.Prefs
 import io.github.jqssun.airplay.BootReceiver
 import io.github.jqssun.airplay.service.AirPlayService
 import org.junit.Before
@@ -24,7 +26,19 @@ class AirPlayLifecycleTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private var receiverState = PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
 
+    private val preferences get() = context.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE)
+    private var bootEnabled: Boolean? = null
+    private var receiverEnabled: Boolean? = null
+
     @Before fun isolateFromBootReceiver() {
+        bootEnabled = if (preferences.contains(Prefs.BOOT_AUTO_START.key))
+            preferences.getBoolean(Prefs.BOOT_AUTO_START.key, true) else null
+        receiverEnabled = if (preferences.contains(LiteCast.PREF_RECEIVER_ENABLED))
+            preferences.getBoolean(LiteCast.PREF_RECEIVER_ENABLED, true) else null
+        // Component disabling alone cannot revoke BOOT_COMPLETED already queued by
+        // system_server. Its onReceive must also observe the receiver's off setting.
+        check(preferences.edit().putBoolean(Prefs.BOOT_AUTO_START.key, false)
+            .putBoolean(LiteCast.PREF_RECEIVER_ENABLED, false).commit())
         // A delayed emulator BOOT_COMPLETED must not start the production receiver
         // while this test owns the process-wide native diagnostic sink.
         val receiver = ComponentName(context, BootReceiver::class.java)
@@ -39,6 +53,12 @@ class AirPlayLifecycleTest {
     }
 
     @After fun restoreBootReceiver() {
+        val editor = preferences.edit()
+        bootEnabled?.let { editor.putBoolean(Prefs.BOOT_AUTO_START.key, it) }
+            ?: editor.remove(Prefs.BOOT_AUTO_START.key)
+        receiverEnabled?.let { editor.putBoolean(LiteCast.PREF_RECEIVER_ENABLED, it) }
+            ?: editor.remove(LiteCast.PREF_RECEIVER_ENABLED)
+        check(editor.commit())
         NativeBridge.nativeSetDiagnosticPath(
             io.github.litecast.diagnostics.Diagnostics.nativeTracePath())
         context.packageManager.setComponentEnabledSetting(
