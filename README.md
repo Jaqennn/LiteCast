@@ -259,7 +259,7 @@ adb shell am start -n io.github.litecast/io.github.litecast.tv.HomeActivity
 
 ## 反馈
 
-0.2.2-beta.1 增加了可拍照的「故障记录」页面：主页「反馈」→「故障记录」。启动出错时会尽量保存错误，退出后再次打开可查看。记录仅保存在本机；部分底层崩溃只能留下最后启动阶段。具体说明见 [问题反馈与故障记录](docs/diagnostics.md)。
+0.2.2 增加了可拍照的「故障记录」页面：主页「反馈」→「故障记录」。启动出错时会尽量保存错误，退出后再次打开可查看。记录仅保存在本机；部分底层崩溃只能留下最后启动阶段。具体说明见 [问题反馈与故障记录](docs/diagnostics.md)。
 
 装了轻投的话最方便：主页右上角点「反馈」，电视上会显示问卷二维码，旁边写好了这台电视的品牌、型号和安卓版本，手机扫码照着填就行。
 
@@ -330,7 +330,7 @@ cd LiteCast
 
 为了支持 Android 5.x，Compose 停在 1.9（BOM 2025.11.01）、Media3 停在 1.8：这两个库更新的版本要求 Android 6.0。升级它们之前先确认 minSdk 还是 21。
 
-**发布新版本**：签名钥匙存在仓库的加密 Secrets 里（`KEYSTORE_BASE64` 是 `base64 -w0 litecast-release.jks` 的输出，另外三个是 `KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`）。改好 `app/build.gradle.kts` 里的 `versionCode` 和 `versionName`，把发布说明写进 `docs/release-notes/<版本号>.md`，推到 main，然后在 Actions → Release → Run workflow 运行一次：它会跑测试、签名打包、核对证书指纹，再创建 `v<版本号>` 发布页，附上 `LiteCast.apk` 和它的 SHA-256。勾选 dry run 只打包检查、不发布。每个版本都叫 `LiteCast.apk`，README 里的下载链接才会一直指向最新版。发布后，把新的 LiteCast.apk 传到蓝奏云文件夹「轻投LiteCast」，删掉旧的，国内备用下载才是最新的。
+**发布新版本**：签名钥匙存在仓库的加密 Secrets 里（`KEYSTORE_BASE64` 是 `base64 -w0 litecast-release.jks` 的输出，另外三个是 `KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`）。改好 `app/build.gradle.kts` 里的 `versionCode` 和 `versionName`，把发布说明写进 `docs/release-notes/<版本号>.md`，以 `release:` 开头的提交标题合并到 main，完整 Build 检查通过后会自动发布；也可以在 Actions → Release → Run workflow 手动运行：它会跑测试、签名打包、核对证书指纹，再创建 `v<版本号>` 发布页，附上 `LiteCast.apk` 和它的 SHA-256。勾选 dry run 只打包检查、不发布。每个版本都叫 `LiteCast.apk`，README 里的下载链接才会一直指向最新版。发布后，把新的 LiteCast.apk 传到蓝奏云文件夹「轻投LiteCast」，删掉旧的，国内备用下载才是最新的。
 
 在自己电脑上打包：在 `local.properties` 里写上
 
