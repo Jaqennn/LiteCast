@@ -126,8 +126,9 @@ jobs:
             adb install apks/androidTest/debug/app-debug-androidTest.apk
             adb logcat -c
             adb shell am instrument -w -r -e class io.github.litecast.AirPlayLifecycleTest io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee airplay-lifecycle.txt
-            grep -Eq '^OK \(1 test\)' airplay-lifecycle.txt
             adb logcat -d > airplay-logcat.txt
+            adb exec-out run-as io.github.litecast cat files/airplay-lifecycle-test.txt > airplay-stages.txt || true
+            grep -Eq '^OK \(1 test\)' airplay-lifecycle.txt
             if grep -E 'Native thread exited without calling DetachCurrentThread|JNI DETECTED ERROR|Fatal signal' airplay-logcat.txt; then exit 1; fi
             adb exec-out run-as io.github.litecast cat files/airplay-lifecycle-test.txt > airplay-stages.txt
             adb shell wm size 1920x1080

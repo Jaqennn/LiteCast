@@ -1,0 +1,51 @@
+name: AirPlay investigate
+on:
+  push:
+    branches: [fix/airplay-session-lifecycle]
+    paths: [.github/workflows/airplay-investigate.yml]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: 23
+            arch: x86
+          - api: 31
+            arch: x86_64
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: LiteCast-test-apks
+          run-id: 43691145561
+          github-token: ${{ github.token }}
+          path: apks
+      - name: KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: ${{ matrix.arch }}
+          target: default
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            adb install apks/debug/app-debug.apk
+            adb install apks/androidTest/debug/app-debug-androidTest.apk
+            adb logcat -c
+            adb shell am instrument -w -r -e class io.github.litecast.AirPlayLifecycleTest io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee test.txt
+            adb logcat -d > logcat.txt
+            adb exec-out run-as io.github.litecast cat files/airplay-lifecycle-test.txt > stages.txt || true
+            grep -Eq '^OK \(1 test\)' test.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: investigation-${{ matrix.api }}
+          path: '*.txt'
