@@ -1,7 +1,7 @@
 name: Build
 
 # Every push and pull request: unit tests, lint and a debug APK. Publishing a signed release is
-# a separate workflow, release.yml, so no signing key is ever used here.
+# a separate workflow, release.yml; this branch has a gated prerelease job.
 on:
   push:
     branches: [main, fix/airplay-session-lifecycle]
@@ -133,6 +133,11 @@ jobs:
             adb shell am force-stop io.github.litecast
             adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#verifyInterruptedStartupAfterRestart io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee interrupted-reload.txt
             grep -Eq '^OK \(1 test\)' interrupted-reload.txt
+            adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#prepareNativeStageTrail io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee native-stages-save.txt
+            grep -Eq '^OK \(1 test\)' native-stages-save.txt
+            adb shell am force-stop io.github.litecast
+            adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#verifyNativeStageTrailAfterRestart io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee native-stages-reload.txt
+            grep -Eq '^OK \(1 test\)' native-stages-reload.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -140,13 +145,14 @@ jobs:
           path: |
             instrumentation.txt
             airplay-*.txt
+            native-stages-*.txt
             diagnostic-preview.png
             recovery-*.txt
             interrupted-*.txt
 
   publish-test:
     needs: [validation, compatibility]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/airplay-session-lifecycle'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/airplay-session-lifecycle' && startsWith(github.event.head_commit.message, 'prerelease:')
     permissions:
       contents: write
     concurrency:
@@ -173,7 +179,7 @@ jobs:
       - name: Version and notes
         id: meta
         env:
-          DRY_RUN: false
+          DRY_RUN: "false"
         run: |
           version=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
           echo "version=$version" >> "$GITHUB_OUTPUT"
