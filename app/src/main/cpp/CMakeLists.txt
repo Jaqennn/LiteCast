@@ -11,6 +11,9 @@ set(UXPLAY_LIB third_party/UxPlay/lib)
 
 # ---------- OpenSSL (built from source via openssl-cmake) ----------
 set(BUILD_OPENSSL ON CACHE BOOL "" FORCE)
+# LiteCast: Android 5.x can reuse the system's already-loaded libcrypto.so by basename.
+# Embed our crypto implementation and hide its symbols from the process-wide lookup scope.
+set(OPENSSL_USE_STATIC_LIBS ON CACHE BOOL "" FORCE)
 set(OPENSSL_BUILD_VERSION "3.4.4" CACHE STRING "" FORCE)
 set(CROSS_ANDROID ON CACHE BOOL "" FORCE)
 string(REGEX MATCH "[0-9]+" AIRPLAY_ANDROID_API "${ANDROID_PLATFORM}")
@@ -143,7 +146,10 @@ target_compile_definitions(airplay_native PRIVATE
     TARGET_RT_LITTLE_ENDIAN=1
 )
 
-target_link_options(airplay_native PRIVATE "-Wl,--build-id=none")
+target_link_options(airplay_native PRIVATE
+    "-Wl,--build-id=none"
+    "-Wl,--exclude-libs,libcrypto.a"
+)
 
 target_link_libraries(airplay_native
     llhttp

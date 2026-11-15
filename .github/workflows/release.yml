@@ -2,9 +2,13 @@ name: Release
 
 # Builds, signs and publishes LiteCast.apk for the versionName in app/build.gradle.kts, with the
 # notes in docs/release-notes/<version>.md. Started by hand (Actions → Release → Run workflow)
-# or through the API. The signing key exists only in this repository's encrypted secrets
+# or after a release: commit on main passes the complete Build workflow. The signing key exists only in this repository's encrypted secrets
 # (KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD); see README → 从源码构建.
 on:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -21,6 +25,11 @@ concurrency:
 
 jobs:
   release:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       startsWith(github.event.workflow_run.head_commit.message, 'release:'))
     runs-on: ubuntu-latest
     env:
       # Fingerprint of LiteCast's release certificate (public, not a secret). Every APK we
@@ -29,6 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: recursive
           fetch-depth: 0
 
@@ -83,6 +93,7 @@ jobs:
         run: |
           export SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
           ./gradlew --stacktrace testDebugUnitTest lintDebug assembleRelease
+          python3 tools/check_native_apk.py app/build/outputs/apk/release/app-release.apk
           cp app/build/outputs/apk/release/app-release.apk LiteCast.apk
           rm -f "$RUNNER_TEMP/release.jks" local.properties
 
@@ -112,4 +123,8 @@ jobs:
             echo
             echo "SHA-256（LiteCast.apk）：\`$(cat LiteCast.apk.sha256)\`"
           } > body.md
-          gh release create "$TAG" LiteCast.apk --target "$GITHUB_SHA" --title "轻投 $VERSION" --notes-file body.md
+          gh release create "$TAG" LiteCast.apk --target "$(git rev-parse HEAD)" --title "轻投 $VERSION" --notes-file body.md
+
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks" local.properties

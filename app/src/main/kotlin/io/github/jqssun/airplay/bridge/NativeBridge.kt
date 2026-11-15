@@ -4,8 +4,19 @@ object NativeBridge {
     const val FT_MIRROR = 7
     const val FT_AUDIO = 9
 
-    init {
+    // Keep the class usable after a failed load so the service can report the original error
+    // and continue serving DLNA. A failing object initializer poisons the class until restart.
+    private val loadError: Throwable? = try {
         System.loadLibrary("airplay_native")
+        null
+    } catch (error: LinkageError) {
+        error
+    } catch (error: SecurityException) {
+        error
+    }
+
+    fun ensureLoaded() {
+        loadError?.let { throw it }
     }
 
     external fun nativeInit(

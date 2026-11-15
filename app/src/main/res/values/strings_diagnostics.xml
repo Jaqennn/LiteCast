@@ -1,0 +1,15 @@
+<resources>
+    <string name="lc_diag_title">Diagnostic report</string>
+    <string name="lc_diag_page">Diagnostic report · %1$d / %2$d</string>
+    <string name="lc_diag_photo">Photograph these pages and send them with the steps that caused the problem. Saved locally; never uploaded automatically.</string>
+    <string name="lc_diag_native">AirPlay could not load its native component. DLNA can continue if available. The technical error below needs developer review.</string>
+    <string name="lc_diag_interrupted">The previous startup did not finish. The process may have crashed or been ended. No complete crash log is available; the last recorded stage appears below.</string>
+    <string name="lc_diag_crash">An error was saved before the app exited. Photograph this report before trying again.</string>
+    <string name="lc_diag_start">A receiver component could not start. The recorded error appears below.</string>
+    <string name="lc_diag_empty">No error has been saved. Include these device details, what you did, and what appeared on the TV in your feedback.</string>
+    <string name="lc_diag_previous">Previous</string>
+    <string name="lc_diag_next">Next</string>
+    <string name="lc_diag_copy">Copy report</string>
+    <string name="lc_diag_copied">Report copied</string>
+    <string name="lc_diag_retry">Try opening LiteCast</string>
+</resources>

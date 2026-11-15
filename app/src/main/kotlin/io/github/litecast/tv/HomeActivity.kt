@@ -67,6 +67,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import io.github.jqssun.airplay.MainActivity
 import io.github.jqssun.airplay.Prefs
 import io.github.jqssun.airplay.R
@@ -76,8 +79,10 @@ import io.github.jqssun.airplay.observe
 import io.github.jqssun.airplay.service.AirPlayService
 import io.github.litecast.LiteCast
 import io.github.litecast.dlna.DlnaRenderer
+import io.github.litecast.diagnostics.Diagnostics
 import java.net.Inet4Address
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** Launcher entry: one calm screen that says what to do on the phone, plus a short settings list. */
 class HomeActivity : ComponentActivity() {
@@ -85,7 +90,7 @@ class HomeActivity : ComponentActivity() {
     private val screen = mutableStateOf(Screen.HOME)
     private var feedbackFrom = Screen.HOME
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        binding.service.value?.let(::ensureRunning)
+        if (hasLocalNetwork()) binding.service.value?.let { ensureRunning(it, retryAfterPermission = true) }
     }
 
     private enum class Screen { HOME, SETTINGS, FEEDBACK }
@@ -97,7 +102,22 @@ class HomeActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Diagnostics.needsRecovery()) {
+            startActivity(Intent(this, DiagnosticActivity::class.java))
+            finish()
+            return
+        }
         binding.onConnected = { svc -> ensureRunning(svc) }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                Diagnostics.reports.collect { report ->
+                    if (report != null && Diagnostics.needsAttention(report)) {
+                        Diagnostics.acknowledge(report)
+                        startActivity(Intent(this@HomeActivity, DiagnosticActivity::class.java))
+                    }
+                }
+            }
+        }
         // Android 17+ gates LAN access behind a runtime permission
         if (!hasLocalNetwork()) permissions.launch(arrayOf(Manifest.permission.ACCESS_LOCAL_NETWORK))
         setContent {
@@ -120,8 +140,9 @@ class HomeActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        if (isFinishing || Diagnostics.needsRecovery()) return
         binding.bind()
-        binding.service.value?.let(::ensureRunning)
+        binding.service.value?.let { ensureRunning(it) }
     }
 
     override fun onStop() {
@@ -129,9 +150,10 @@ class HomeActivity : ComponentActivity() {
         super.onStop()
     }
 
-    private fun ensureRunning(svc: AirPlayService) {
+    private fun ensureRunning(svc: AirPlayService, retryAfterPermission: Boolean = false) {
         val prefs = getSharedPreferences(Prefs.NAME, MODE_PRIVATE)
-        if (prefs.getBoolean(LiteCast.PREF_RECEIVER_ENABLED, true) && svc.serverState.value != AirPlayService.ServerState.RUNNING) {
+        if (prefs.getBoolean(LiteCast.PREF_RECEIVER_ENABLED, true) &&
+            !svc.isReceiverActive && (svc.serverState.value == AirPlayService.ServerState.STOPPED || retryAfterPermission)) {
             ServiceBinding.startReceiver(this)
         }
     }
@@ -261,7 +283,7 @@ internal fun HomeContent(
                             AirPlayService.ServerState.STOPPED -> StatusChip(stringResource(R.string.lc_status_airplay_off), Tv.TextTertiary)
                         }
                         when {
-                            !ui.dlnaEnabled || ui.airplay != AirPlayService.ServerState.RUNNING ->
+                            !ui.dlnaEnabled || ui.dlna == DlnaRenderer.Status.STOPPED ->
                                 StatusChip(stringResource(R.string.lc_status_dlna_off), Tv.TextTertiary)
                             ui.dlna == DlnaRenderer.Status.READY -> StatusChip(stringResource(R.string.lc_status_dlna_ready), Tv.Accent)
                             ui.dlna == DlnaRenderer.Status.ERROR -> StatusChip(stringResource(R.string.lc_status_dlna_error), Tv.Error)
@@ -393,6 +415,7 @@ private fun SettingsScreen(svc: AirPlayService?, onFeedback: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE) }
     val serverState = svc?.serverState.collectOr(AirPlayService.ServerState.STOPPED)
+    val dlnaState = svc?.dlnaStatus.collectOr(DlnaRenderer.Status.STOPPED)
     val boot by remember { prefs.observe { this[Prefs.BOOT_AUTO_START] } }.collectAsState(prefs[Prefs.BOOT_AUTO_START])
     val dlna by remember { prefs.observe { getBoolean(LiteCast.PREF_DLNA_ENABLED, true) } }.collectAsState(true)
     val pin by remember { prefs.observe { this[Prefs.REQUIRE_PIN] } }.collectAsState(prefs[Prefs.REQUIRE_PIN])
@@ -400,7 +423,8 @@ private fun SettingsScreen(svc: AirPlayService?, onFeedback: () -> Unit) {
         while (true) { value = canDrawOverlays(context); delay(1000) }
     }
     var about by remember { mutableStateOf(false) }
-    val running = serverState == AirPlayService.ServerState.RUNNING
+    val running = serverState == AirPlayService.ServerState.RUNNING ||
+        (dlnaState != DlnaRenderer.Status.STOPPED && svc?.isReceiverActive == true)
 
     SettingsContent(
         ui = SettingsUi(running, dlna, boot, canPopUp, pin, LiteCast.versionName(context)),

@@ -1,0 +1,15 @@
+<resources>
+    <string name="lc_diag_title">故障记录</string>
+    <string name="lc_diag_page">故障记录 · 第 %1$d / %2$d 页</string>
+    <string name="lc_diag_photo">可用手机逐页拍照，反馈时补充出错前的操作。记录保存在电视本机，不会自动上传。</string>
+    <string name="lc_diag_native">苹果投屏的底层组件加载失败。普通视频投屏可在条件允许时继续使用。下方错误需要开发者进一步检查。</string>
+    <string name="lc_diag_interrupted">上次启动没有完成，应用可能发生崩溃或被结束。未获取完整崩溃日志，下方显示最后记录到的步骤。</string>
+    <string name="lc_diag_crash">应用退出前保存了一条错误记录。拍照保留后，可以尝试重新打开。</string>
+    <string name="lc_diag_start">投屏组件启动失败，下方是记录到的错误。</string>
+    <string name="lc_diag_empty">尚无故障记录。反馈时可附上这些设备信息、出错前的操作和电视上的表现。</string>
+    <string name="lc_diag_previous">上一页</string>
+    <string name="lc_diag_next">下一页</string>
+    <string name="lc_diag_copy">复制完整记录</string>
+    <string name="lc_diag_copied">完整记录已复制</string>
+    <string name="lc_diag_retry">尝试打开轻投</string>
+</resources>
