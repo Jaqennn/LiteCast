@@ -124,10 +124,6 @@ jobs:
           script: |
             adb install apks/debug/app-debug.apk
             adb install apks/androidTest/debug/app-debug-androidTest.apk
-            # A delayed emulator BOOT_COMPLETED can start the production receiver
-            # during this isolated native-server test and replace its trace path.
-            adb shell pm disable io.github.litecast/io.github.jqssun.airplay.BootReceiver
-            adb shell am force-stop io.github.litecast
             adb logcat -c
             adb shell am instrument -w -r -e class io.github.litecast.AirPlayLifecycleTest io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee airplay-lifecycle.txt
             adb logcat -d > airplay-logcat.txt
@@ -135,7 +131,6 @@ jobs:
             grep -Eq '^OK \(1 test\)' airplay-lifecycle.txt
             if grep -E 'Native thread exited without calling DetachCurrentThread|JNI DETECTED ERROR|Fatal signal' airplay-logcat.txt; then exit 1; fi
             adb exec-out run-as io.github.litecast cat files/airplay-lifecycle-test.txt > airplay-stages.txt
-            adb shell pm enable io.github.litecast/io.github.jqssun.airplay.BootReceiver
             adb shell wm size 1920x1080
             adb shell wm density 240
             adb shell am instrument -w -r -e class io.github.litecast.LegacyStartupTest io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt

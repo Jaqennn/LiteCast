@@ -1,5 +1,12 @@
 package io.github.litecast
 
+import android.content.ComponentName
+import android.content.Intent
+import android.content.pm.PackageManager
+import io.github.jqssun.airplay.BootReceiver
+import io.github.jqssun.airplay.service.AirPlayService
+import org.junit.Before
+import org.junit.After
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.jqssun.airplay.bridge.NativeBridge
@@ -15,6 +22,30 @@ import java.net.Socket
 @RunWith(AndroidJUnit4::class)
 class AirPlayLifecycleTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
+    private var receiverState = PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
+
+    @Before fun isolateFromBootReceiver() {
+        // A delayed emulator BOOT_COMPLETED must not start the production receiver
+        // while this test owns the process-wide native diagnostic sink.
+        val receiver = ComponentName(context, BootReceiver::class.java)
+        receiverState = context.packageManager.getComponentEnabledSetting(receiver)
+        context.packageManager.setComponentEnabledSetting(receiver,
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            context.stopService(Intent(context, AirPlayService::class.java))
+        }
+        instrumentation.waitForIdleSync()
+    }
+
+    @After fun restoreBootReceiver() {
+        NativeBridge.nativeSetDiagnosticPath(
+            io.github.litecast.diagnostics.Diagnostics.nativeTracePath())
+        context.packageManager.setComponentEnabledSetting(
+            ComponentName(context, BootReceiver::class.java), receiverState,
+            PackageManager.DONT_KILL_APP)
+    }
+
     // Use concrete callbacks, as the service does. ART CheckJNI handles dynamic
     // proxy method IDs differently across releases; proxies obscure this native test.
     private class Callbacks : RaopCallbackHandler, LogListener {
