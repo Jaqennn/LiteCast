@@ -34,7 +34,7 @@ object Diagnostics {
             if (trail.isNotBlank()) {
                 val existing = current.value
                 val detail = "Last saved AirPlay stages. This is not a crash stack; a normal process termination can also leave this record.\n" + trail
-                if (existing?.recoveryRequired == true) {
+                if (existing?.recoveryRequired == true && preferences.getString("retry_id", null) != existing.id) {
                     record(existing.code, existing.stage, existing.detail + "\n\n" + detail, true)
                 } else if (!trail.trimEnd().endsWith("server.destroy.done")) {
                     record("LC-AIRPLAY-LAST-RUN", "AirPlay previous process", detail)
@@ -125,7 +125,7 @@ object Diagnostics {
 
     private fun readNativeTrace(trace: File): String = runCatching {
         java.io.RandomAccessFile(trace, "r").use { input ->
-            val count = minOf(input.length(), 24576L).toInt()
+            val count = minOf(input.length(), 12000L).toInt()
             input.seek(input.length() - count)
             val data = ByteArray(count)
             input.readFully(data)

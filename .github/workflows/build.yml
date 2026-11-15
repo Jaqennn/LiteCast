@@ -13,9 +13,21 @@ permissions:
 
 jobs:
   validation:
+    permissions:
+      contents: read
+      actions: write
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Cancel superseded test publication candidates
+        if: github.event_name == 'push' && github.ref == 'refs/heads/fix/airplay-session-lifecycle'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml/runs?branch=fix%2Fairplay-session-lifecycle&event=push&per_page=30" --jq ".workflow_runs[] | select(.id < $GITHUB_RUN_ID and .status != \"completed\") | .id" | while read -r run_id; do
+            gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/cancel" || true
+          done
+
       - uses: actions/checkout@v7
         with:
           submodules: recursive
@@ -245,6 +257,11 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
           NOTES: ${{ steps.meta.outputs.notes }}
         run: |
+          remote_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/fix/airplay-session-lifecycle" --jq '.object.sha')
+          if [ "$remote_sha" != "$GITHUB_SHA" ]; then
+            echo "A newer test candidate exists; skip publication"
+            exit 0
+          fi
           {
             cat "$NOTES"
             echo
