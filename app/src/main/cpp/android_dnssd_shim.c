@@ -25,6 +25,7 @@ typedef struct {
 typedef struct {
     txt_entry_t entries[MAX_TXT_ENTRIES];
     int count;
+    char wire[8192];
 } txt_record_t;
 
 struct dnssd_s {
@@ -196,14 +197,25 @@ dnssd_register_airplay(dnssd_t *dnssd, unsigned short port)
 void dnssd_unregister_raop(dnssd_t *dnssd) {}
 void dnssd_unregister_airplay(dnssd_t *dnssd) {}
 
-const char *dnssd_get_raop_txt(dnssd_t *dnssd, int *length) {
-    if (length) *length = 0;
-    return NULL;
+static const char *serialize_txt(txt_record_t *rec, int *length) {
+    int offset = 0;
+    for (int i = 0; i < rec->count; ++i) {
+        size_t key = strlen(rec->entries[i].key), val = strlen(rec->entries[i].val);
+        size_t size = key + 1 + val;
+        if (size > 255 || offset + 1 + size > sizeof(rec->wire)) break;
+        rec->wire[offset++] = (char)size;
+        memcpy(rec->wire + offset, rec->entries[i].key, key); offset += key;
+        rec->wire[offset++] = '=';
+        memcpy(rec->wire + offset, rec->entries[i].val, val); offset += val;
+    }
+    if (length) *length = offset;
+    return rec->wire;
 }
-
+const char *dnssd_get_raop_txt(dnssd_t *dnssd, int *length) {
+    return serialize_txt(&dnssd->raop_record, length);
+}
 const char *dnssd_get_airplay_txt(dnssd_t *dnssd, int *length) {
-    if (length) *length = 0;
-    return NULL;
+    return serialize_txt(&dnssd->airplay_record, length);
 }
 
 const char *dnssd_get_name(dnssd_t *dnssd, int *length) {

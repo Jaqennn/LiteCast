@@ -12,4 +12,5 @@
     <string name="lc_diag_copy">Copy report</string>
     <string name="lc_diag_copied">Report copied</string>
     <string name="lc_diag_retry">Try opening LiteCast</string>
+    <string name="lc_diag_stages">Saved AirPlay stages from the previous process. This is not a crash stack; normal process termination may also leave a record.</string>
 </resources>

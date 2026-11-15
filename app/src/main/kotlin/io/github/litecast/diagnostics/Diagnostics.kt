@@ -27,6 +27,21 @@ object Diagnostics {
         if (installed) return
         app = context.applicationContext ?: context
         current.value = read()
+        // Preserve the previous process trail before the new receiver starts appending.
+        val trace = File(app.filesDir, "litecast-airplay-trace.txt")
+        if (trace.exists()) {
+            val trail = readNativeTrace(trace)
+            if (trail.isNotBlank()) {
+                val existing = current.value
+                val detail = "Last saved AirPlay stages. This is not a crash stack; a normal process termination can also leave this record.\n" + trail
+                if (existing?.recoveryRequired == true) {
+                    record(existing.code, existing.stage, existing.detail + "\n\n" + detail, true)
+                } else if (!trail.trimEnd().endsWith("server.destroy.done")) {
+                    record("LC-AIRPLAY-LAST-RUN", "AirPlay previous process", detail)
+                }
+            }
+            trace.delete()
+        }
         val interrupted = preferences.getString("startup_stage", null)
         if (interrupted != null) {
             record("LC-START-INTERRUPTED", interrupted,
@@ -103,6 +118,20 @@ object Diagnostics {
         preferences.edit().remove("startup_stage").commit()
         stage = "receiver runtime"
     }
+
+    fun nativeTracePath(): String = File(app.filesDir, "litecast-airplay-trace.txt").absolutePath
+
+    fun nativeTraceText(): String = readNativeTrace(File(nativeTracePath()))
+
+    private fun readNativeTrace(trace: File): String = runCatching {
+        java.io.RandomAccessFile(trace, "r").use { input ->
+            val count = minOf(input.length(), 24576L).toInt()
+            input.seek(input.length() - count)
+            val data = ByteArray(count)
+            input.readFully(data)
+            String(data, Charsets.UTF_8)
+        }
+    }.getOrDefault("")
 
     private fun read(): DiagnosticReport? = runCatching {
         val data = file.openRead().use { input ->

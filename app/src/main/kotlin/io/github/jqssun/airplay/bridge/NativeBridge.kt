@@ -19,6 +19,8 @@ object NativeBridge {
         loadError?.let { throw it }
     }
 
+    external fun nativeSetDiagnosticPath(path: String)
+
     external fun nativeInit(
         callback: RaopCallbackHandler,
         hwAddr: ByteArray,

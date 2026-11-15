@@ -37,8 +37,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 21
         targetSdk = 37
-        versionCode = 6
-        versionName = "0.2.2"
+        versionCode = 7
+        versionName = "0.2.3-beta.1"
 
         externalNativeBuild {
             cmake {
@@ -59,6 +59,7 @@ android {
             ndk { abiFilters += allAbis }
         }
         release {
+            ndk.debugSymbolLevel = "FULL"
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfigs.findByName("release")?.let { signingConfig = it }

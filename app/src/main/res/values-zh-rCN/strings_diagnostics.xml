@@ -12,4 +12,5 @@
     <string name="lc_diag_copy">复制完整记录</string>
     <string name="lc_diag_copied">完整记录已复制</string>
     <string name="lc_diag_retry">尝试打开轻投</string>
+    <string name="lc_diag_stages">上次运行保存的 AirPlay 阶段记录。这里没有完整崩溃堆栈，正常结束进程也可能留下记录。</string>
 </resources>

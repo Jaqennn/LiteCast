@@ -518,6 +518,7 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
 
     protected open fun startAirplay(effectiveName: String) {
         NativeBridge.ensureLoaded()
+        NativeBridge.nativeSetDiagnosticPath(Diagnostics.nativeTracePath())
         nsdManager = NsdServiceManager(this).apply { acquireMulticastLock() }
 
         val hwAddr = getHwAddr()

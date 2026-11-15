@@ -36,13 +36,16 @@ class DiagnosticActivity : Activity() {
         report?.let(Diagnostics::acknowledge)
         val recovery = Diagnostics.needsRecovery()
         val summary = getString(when (report?.code) {
+            "LC-AIRPLAY-LAST-RUN" -> R.string.lc_diag_stages
             "LC-NATIVE-LOAD" -> R.string.lc_diag_native
             "LC-START-INTERRUPTED" -> R.string.lc_diag_interrupted
             "LC-JAVA-CRASH" -> R.string.lc_diag_crash
             null -> R.string.lc_diag_empty
             else -> R.string.lc_diag_start
         })
-        val fullText = report?.text() ?: Diagnostics.device(this)
+        val liveTrace = Diagnostics.nativeTraceText()
+        val fullText = (report?.text() ?: Diagnostics.device(this)) +
+            if (liveTrace.isBlank()) "" else "\n\nAirPlay 当前运行阶段 / Current process stages\n$liveTrace"
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(36), dp(24), dp(36), dp(24))

@@ -9,6 +9,17 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffile-prefix-map=${CMAKE_SOURCE_DIR}=. 
 
 set(UXPLAY_LIB third_party/UxPlay/lib)
 
+# Build-local, checked patches: keep the pinned upstream submodule reproducible.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(UXPLAY_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/uxplay-patched")
+execute_process(COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../tools/prepare_uxplay.py"
+    "${CMAKE_CURRENT_SOURCE_DIR}/${UXPLAY_LIB}" "${UXPLAY_PATCHED}"
+    COMMAND_ERROR_IS_FATAL ANY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../tools/prepare_uxplay.py")
+
+
 # ---------- OpenSSL (built from source via openssl-cmake) ----------
 set(BUILD_OPENSSL ON CACHE BOOL "" FORCE)
 # LiteCast: Android 5.x can reuse the system's already-loaded libcrypto.so by basename.
@@ -103,12 +114,12 @@ set(AIRPLAY_SOURCES
     ${UXPLAY_LIB}/fairplay_playfair.c
     ${UXPLAY_LIB}/http_request.c
     ${UXPLAY_LIB}/http_response.c
-    ${UXPLAY_LIB}/httpd.c
+    ${UXPLAY_PATCHED}/httpd.c
     ${UXPLAY_LIB}/logger.c
     ${UXPLAY_LIB}/mirror_buffer.c
     ${UXPLAY_LIB}/netutils.c
     ${UXPLAY_LIB}/pairing.c
-    ${UXPLAY_LIB}/raop.c
+    ${UXPLAY_PATCHED}/raop.c
     ${UXPLAY_LIB}/raop_buffer.c
     ${UXPLAY_LIB}/raop_ntp.c
     ${UXPLAY_LIB}/raop_rtp.c
@@ -121,6 +132,8 @@ set(AIRPLAY_SOURCES
 set(BRIDGE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/android_dnssd_shim.c
     ${CMAKE_CURRENT_SOURCE_DIR}/android_raop_callbacks.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/android_jni_thread.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/native_trace.c
     ${CMAKE_CURRENT_SOURCE_DIR}/native_bridge.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/audio_engine.cpp
 )

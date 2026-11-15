@@ -6,7 +6,18 @@
 #include <string.h>
 #include <stdlib.h>
 #include <memory>
+#include "native_trace.h"
 #include <android/log.h>
+
+extern "C" JNIEXPORT void JNICALL
+Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeSetDiagnosticPath(
+        JNIEnv *env, jobject, jstring path) {
+    if (!path) return;
+    const char *value = env->GetStringUTFChars(path, NULL);
+    if (!value) return;
+    litecast_trace_open(value);
+    env->ReleaseStringUTFChars(path, value);
+}
 
 extern "C" {
 #include "raop.h"
@@ -19,6 +30,7 @@ extern "C" {
 
 #include "audio_engine.h"
 #include "log_sink.h"
+#include "native_trace.h"
 
 #define TAG "AirPlayNative"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -49,6 +61,8 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeInit(
         jobject callback, jbyteArray hwAddr, jstring name, jstring keyFile,
         jboolean nohold, jboolean requirePin) {
 
+    litecast_trace("server.init.begin");
+    if (!callback || !hwAddr || !name || !keyFile) return 0;
     server_ctx_t *ctx = new server_ctx_t();
 
     jsize hw_len = env->GetArrayLength(hwAddr);
@@ -56,6 +70,11 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeInit(
     env->GetByteArrayRegion(hwAddr, 0, hw_len, (jbyte *)ctx->hw_addr);
 
     android_callbacks_init(&ctx->cb_ctx, env, callback);
+    if (env->ExceptionCheck()) {
+        android_callbacks_destroy(&ctx->cb_ctx, env);
+        delete ctx;
+        return 0;
+    }
     ctx->cb_ctx.require_pin = requirePin ? 1 : 0;
     android_callbacks_fill(&ctx->callbacks, &ctx->cb_ctx);
 
@@ -80,9 +99,24 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeInit(
              (unsigned char)ctx->hw_addr[2], (unsigned char)ctx->hw_addr[3],
              (unsigned char)ctx->hw_addr[4], (unsigned char)ctx->hw_addr[5]);
 
+    if (!keyfile_c || !name_c) {
+        if (keyfile_c) env->ReleaseStringUTFChars(keyFile, keyfile_c);
+        if (name_c) env->ReleaseStringUTFChars(name, name_c);
+        raop_destroy(ctx->raop);
+        android_callbacks_destroy(&ctx->cb_ctx, env);
+        delete ctx;
+        return 0;
+    }
     int ret = raop_init2(ctx->raop, nohold ? 1 : 0, device_id, keyfile_c);
     if (ret < 0) {
         LOGE("raop_init2 failed: %d", ret);
+        litecast_trace("server.init.pairing-failed");
+        env->ReleaseStringUTFChars(keyFile, keyfile_c);
+        env->ReleaseStringUTFChars(name, name_c);
+        raop_destroy(ctx->raop);
+        android_callbacks_destroy(&ctx->cb_ctx, env);
+        delete ctx;
+        return 0;
     }
 
     if (requirePin) {
@@ -101,6 +135,13 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeInit(
     ctx->dnssd = dnssd_init(name_c, (int)strlen(name_c), ctx->hw_addr, 6, &dns_err, pin_pw);
     if (!ctx->dnssd) {
         LOGE("dnssd_init failed: %d", dns_err);
+        litecast_trace("server.init.discovery-failed");
+        env->ReleaseStringUTFChars(keyFile, keyfile_c);
+        env->ReleaseStringUTFChars(name, name_c);
+        raop_destroy(ctx->raop);
+        android_callbacks_destroy(&ctx->cb_ctx, env);
+        delete ctx;
+        return 0;
     } else {
         raop_set_dnssd(ctx->raop, ctx->dnssd);
     }
@@ -113,6 +154,7 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeInit(
 
     ctx->cb_ctx.audio_engine = audio_engine_create(ctx->log, 44100, 2);
 
+    litecast_trace("server.init.ready");
     return (jlong)(intptr_t)ctx;
 }
 
@@ -127,6 +169,7 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeStart(
     /* LiteCast: 0 asks the OS for a free port (used when a pre-installed receiver
        already holds the preferred one); only negative values mean "default" */
     unsigned short port = (unsigned short)(requestedPort >= 0 ? requestedPort : 7000);
+    litecast_trace("server.listen.begin");
     int ret = raop_start_httpd(ctx->raop, &port);
     if (ret < 0) {
         LOGE("raop_start_httpd failed: %d", ret);
@@ -144,6 +187,7 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeStart(
         dnssd_register_airplay(ctx->dnssd, port);
     }
 
+    litecast_trace("server.listen.ready");
     return (jint)port;
 }
 
@@ -166,7 +210,9 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeStop(
     server_ctx_t *ctx = (server_ctx_t *)(intptr_t)handle;
     if (!ctx || !ctx->raop) return;
 
+    litecast_trace("server.stop.begin");
     raop_stop_httpd(ctx->raop);
+    litecast_trace("server.stop.joined");
     LOGI("AirPlay server stopped");
 
     if (ctx->dnssd) {
@@ -183,6 +229,7 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeDestroy(
     server_ctx_t *ctx = (server_ctx_t *)(intptr_t)handle;
     if (!ctx) return;
 
+    litecast_trace("server.destroy.begin");
     if (ctx->raop) {
         raop_destroy(ctx->raop);
         ctx->raop = NULL;
@@ -197,6 +244,7 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeDestroy(
     }
     android_callbacks_destroy(&ctx->cb_ctx, env);
     delete ctx;
+    litecast_trace("server.destroy.done");
 }
 
 extern "C"
