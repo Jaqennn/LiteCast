@@ -9,17 +9,37 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
-import java.lang.reflect.Proxy
 import java.net.Socket
 
 /** Real native HTTP/RTSP server, threads and JNI callbacks on each Android version. */
 @RunWith(AndroidJUnit4::class)
 class AirPlayLifecycleTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
-    private fun callback(): RaopCallbackHandler = Proxy.newProxyInstance(
-        RaopCallbackHandler::class.java.classLoader,
-        arrayOf(RaopCallbackHandler::class.java, LogListener::class.java)
-    ) { _, method, _ -> if (method.returnType == Float::class.javaPrimitiveType) -20f else null } as RaopCallbackHandler
+    // Use concrete callbacks, as the service does. ART CheckJNI handles dynamic
+    // proxy method IDs differently across releases; proxies obscure this native test.
+    private class Callbacks : RaopCallbackHandler, LogListener {
+        override fun onVideoData(data: ByteArray, ntpTimeNs: Long, isH265: Boolean) {}
+        override fun onAudioFormat(ct: Int, spf: Int, usingScreen: Boolean) {}
+        override fun onVideoSize(srcW: Float, srcH: Float, w: Float, h: Float) {}
+        override fun onClientVolume(db: Float) {}
+        override fun onClientVolumeQuery(): Float = -20f
+        override fun onAudioTeardown() {}
+        override fun onConnectionInit() {}
+        override fun onConnectionDestroy() {}
+        override fun onConnectionReset(reason: Int) {}
+        override fun onDisplayPin(pin: String) {}
+        override fun onMetadata(data: ByteArray) {}
+        override fun onCoverArt(data: ByteArray) {}
+        override fun onProgress(start: Long, curr: Long, end: Long) {}
+        override fun onDacpId(dacpId: String, activeRemote: String) {}
+        override fun onMirrorRunning(running: Boolean) {}
+        override fun onVideoPlay(location: String, startPositionSeconds: Float) {}
+        override fun onVideoScrub(positionSeconds: Float) {}
+        override fun onVideoRate(rate: Float) {}
+        override fun onVideoStop() {}
+        override fun onVideoSessionPoll() {}
+        override fun onLog(msg: String) {}
+    }
 
     @Test fun repeatedDiscoveryDisconnectAndShutdown() {
         NativeBridge.ensureLoaded()
@@ -27,7 +47,7 @@ class AirPlayLifecycleTest {
         trace.delete()
         NativeBridge.nativeSetDiagnosticPath(trace.absolutePath)
         repeat(8) {
-            val handle = NativeBridge.nativeInit(callback(), byteArrayOf(2, 1, 2, 3, 4, 5),
+            val handle = NativeBridge.nativeInit(Callbacks(), byteArrayOf(2, 1, 2, 3, 4, 5),
                 "Lifecycle test", File(context.filesDir, "lifecycle-test.key").absolutePath, false, false)
             assertTrue("Native initialization", handle != 0L)
             try {
