@@ -552,6 +552,13 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
         videoRenderer.enforceSdr = prefs[Prefs.ENFORCE_SDR]
         videoRenderer.keyAllowFrameDrop = prefs[Prefs.KEY_ALLOW_FRAME_DROP]
         videoRenderer.selector.maxOperatingRate = Prefs.forced(prefs[Prefs.OPERATING_RATE])
+        videoRenderer.stageCallback = { NativeBridge.nativeTraceStage(it) }
+        videoRenderer.recoveryFailedCallback = {
+            _mainHandler.post {
+                if (_mirroringActive.value) android.widget.Toast.makeText(this,
+                    getString(R.string.lc_mirror_retry_failed), android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
         videoRenderer.benchmarkLog = prefs[Prefs.BENCHMARK_LOG]
         videoRenderer.benchmarkLogCallback = { msg -> logCallback?.invoke(msg) }
         videoRenderer.scheduledOutputBufferRelease = prefs[Prefs.SCHEDULED_OUTPUT_BUFFER_RELEASE]
@@ -1053,8 +1060,8 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
     override fun onMirrorRunning(running: Boolean) {
         if (running) {
             // LiteCast: newest cast wins over a DLNA video, and the player pops up
-            if (_videoSource.value == VideoSource.DLNA && _videoPlaybackActive.value) {
-                _mainHandler.post { _endVideoPlayback("DLNA stopped: mirroring started") }
+            if (_videoPlaybackActive.value) {
+                _mainHandler.post { _endVideoPlayback("Video stopped: mirroring started") }
             }
             videoRenderer.startSession()
             launchVisualSession()

@@ -43,6 +43,11 @@ jobs:
           gcc -std=c11 -pthread -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux" -Iapp/src/main/cpp app/src/main/cpp/android_jni_thread.c app/src/main/cpp/tests/jni_thread_test.c -o /tmp/jni-thread-test
           /tmp/jni-thread-test
 
+      - name: Native audio buffer regression
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -Iapp/src/main/cpp app/src/main/cpp/tests/timeline_flush_test.cpp -o /tmp/timeline-test
+          /tmp/timeline-test
+
       - name: Unit tests and lint
         run: ./gradlew --continue --stacktrace testDebugUnitTest lintDebug
 
@@ -131,6 +136,11 @@ jobs:
             grep -Eq '^OK \(1 test\)' airplay-lifecycle.txt
             if grep -E 'Native thread exited without calling DetachCurrentThread|JNI DETECTED ERROR|Fatal signal' airplay-logcat.txt; then exit 1; fi
             adb exec-out run-as io.github.litecast cat files/airplay-lifecycle-test.txt > airplay-stages.txt
+            adb logcat -c
+            adb shell am instrument -w -r -e class io.github.litecast.AudioDecodeTest io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee audio-decode.txt
+            adb logcat -d > audio-logcat.txt
+            grep -Eq '^OK \(3 tests\)' audio-decode.txt
+            if grep -E 'JNI DETECTED ERROR|Fatal signal' audio-logcat.txt; then exit 1; fi
             adb shell wm size 1920x1080
             adb shell wm density 240
             adb shell am instrument -w -r -e class io.github.litecast.LegacyStartupTest io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
@@ -158,6 +168,7 @@ jobs:
           path: |
             instrumentation.txt
             airplay-*.txt
+            audio-*.txt
             native-stages-*.txt
             diagnostic-preview.png
             recovery-*.txt

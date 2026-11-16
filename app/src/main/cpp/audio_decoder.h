@@ -1,6 +1,8 @@
 #ifndef AUDIO_DECODER_H
 #define AUDIO_DECODER_H
 
+#include "native_trace.h"
+
 #include <android/log.h>
 #include <media/NdkMediaCodec.h>
 #include <media/NdkMediaFormat.h>
@@ -300,9 +302,11 @@ public:
         if (len == 0 || len > INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE) return false;
         const int64_t t0 = monoNs();
 
-        // not refcounted
-        mPkt->data = const_cast<uint8_t *>(data);
-        mPkt->size = (int)len;
+        // FFmpeg requires readable zero padding beyond the packet. RAOP buffers
+        // do not provide that guarantee; own a padded copy (also safe across flush).
+        av_packet_unref(mPkt);
+        if (av_new_packet(mPkt, (int)len) < 0) return false;
+        memcpy(mPkt->data, data, len);
         if (avcodec_send_packet(mCtx, mPkt) < 0) return false;
 
         int64_t pts = ptsNs;
@@ -314,6 +318,10 @@ public:
                 mLog.error("ffmpeg %s: unsupported output (fmt=%d ch=%d)", mCtx->codec->name,
                            mFrame->format, mFrame->ch_layout.nb_channels);
                 return false;
+            }
+            if (!mProducedPcm) {
+                mProducedPcm = true;
+                litecast_trace("audio.decoder.first-pcm");
             }
             mTimeline.write(mPcm.data(), (size_t)n * mChannels, pts);
             pts += (int64_t)n * NS_PER_SEC / mCtx->sample_rate;
@@ -390,6 +398,7 @@ private:
     LatencyReporter &mLat;
     LogSink &mLog;
     int mChannels;
+    bool mProducedPcm = false;
 };
 
 // ---- decoder factories ----
@@ -447,11 +456,13 @@ static inline std::unique_ptr<Decoder> makeDecoder(int ct, int spf, int sampleRa
         log.error("Unknown audio ct=%d", ct);
         return nullptr;
     }
+    if (forceSw) litecast_trace("audio.decoder.software.selected");
     if (!forceSw) {
         if (AMediaCodec *codec = startMediaCodec(*c, log, realtimePriority, lowLatency))
             return std::make_unique<MediaCodecDecoder>(codec, timeline, lat);
     }
     if (auto sw = FfmpegDecoder::make(*c, timeline, lat, log)) {
+        litecast_trace("audio.decoder.software.ready");
         log.info("%s decoder started (ffmpeg%s)", c->mime, forceSw ? ", forced" : "");
         return sw;
     }

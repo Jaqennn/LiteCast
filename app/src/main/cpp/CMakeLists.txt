@@ -176,3 +176,8 @@ target_link_libraries(airplay_native
     log
     android
 )
+
+# JNI audio test entry points never enter the signed release APK.
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_sources(airplay_native PRIVATE tests/audio_decoder_test.cpp)
+endif()

@@ -38,6 +38,23 @@ void litecast_trace(const char *stage) {
     }
     pthread_mutex_unlock(&trace_lock);
 }
+void litecast_trace_audio(int ct, int spf, int backlog, int cushion, int mean_us,
+                          int max_us, int errors, unsigned packets, long long pts_ms) {
+    pthread_mutex_lock(&trace_lock);
+    if (trace_fd >= 0) {
+        struct stat info;
+        if (fstat(trace_fd, &info) == 0 && info.st_size > 24000) ftruncate(trace_fd, 0);
+        struct timespec now;
+        clock_gettime(CLOCK_REALTIME, &now);
+        char line[256];
+        int n = snprintf(line, sizeof(line),
+            "%lld.%03ld audio ct=%d spf=%d queue_ms=%d cushion_ms=%d decode_us=%d/%d errors=%d packets=%u pts_ms=%lld\n",
+            (long long)now.tv_sec, now.tv_nsec / 1000000, ct, spf, backlog, cushion,
+            mean_us, max_us, errors, packets, pts_ms);
+        if (n > 0 && n < (int)sizeof(line)) (void)write(trace_fd, line, n);
+    }
+    pthread_mutex_unlock(&trace_lock);
+}
 void litecast_trace_request(const char *method, const char *url) {
     if (!method || !url) { litecast_trace("request.invalid"); return; }
     if (!strcmp(method, "SETUP")) litecast_trace("request.setup");

@@ -20,6 +20,7 @@ object NativeBridge {
     }
 
     external fun nativeSetDiagnosticPath(path: String)
+    external fun nativeTraceStage(stage: String)
 
     external fun nativeInit(
         callback: RaopCallbackHandler,

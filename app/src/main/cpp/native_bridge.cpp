@@ -19,6 +19,18 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeSetDiagnosticPath(
     env->ReleaseStringUTFChars(path, value);
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeTraceStage(
+        JNIEnv *env, jobject, jstring stage) {
+    if (!stage) return;
+    const char *value = env->GetStringUTFChars(stage, NULL);
+    if (!value) return;
+    // Only fixed ASCII stage labels are accepted; no URLs or arbitrary messages.
+    if (strlen(value) < 80 && strspn(value, "abcdefghijklmnopqrstuvwxyz.-") == strlen(value))
+        litecast_trace(value);
+    env->ReleaseStringUTFChars(stage, value);
+}
+
 extern "C" {
 #include "raop.h"
 #include "dnssd.h"
