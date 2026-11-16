@@ -1,4 +1,4 @@
-// Debug APK only. Exercise the production decoder with packets encoded on-device.
+// Debug APK only. Exercise the production decoder with known AAC packets.
 #include "audio_decoder.h"
 #include <vector>
 

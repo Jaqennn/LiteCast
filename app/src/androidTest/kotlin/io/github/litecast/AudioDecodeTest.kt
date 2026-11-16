@@ -4,6 +4,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import io.github.jqssun.airplay.bridge.NativeBridge
 import io.github.jqssun.airplay.renderer.AudioConfig
 import io.github.jqssun.airplay.renderer.forDevice
@@ -18,8 +19,24 @@ import kotlin.math.sin
 class AudioDecodeTest {
     private external fun decodePackets(ct: Int, spf: Int, packets: Array<ByteArray>): Int
 
-    @Test fun aacLcProducesPcm() = roundTrip(MediaCodecInfo.CodecProfileLevel.AACObjectLC, 4)
-    @Test fun aacEldProducesPcm() = roundTrip(MediaCodecInfo.CodecProfileLevel.AACObjectELD, 8)
+    @Test fun aacLcProducesPcm() = roundTripAacLc()
+
+    @Test fun aacEldProducesPcm() {
+        NativeBridge.ensureLoaded()
+        val assets = InstrumentationRegistry.getInstrumentation().context.assets
+        for (spf in listOf(480, 512)) {
+            // Fixed AirPlay-format packets avoid platform encoders that silently choose
+            // another profile or produce a different AAC-ELD configuration.
+            val packets = assets.open("aac-eld-$spf.hex").bufferedReader().useLines { lines ->
+                lines.map { line ->
+                    ByteArray(line.length / 2) { i ->
+                        line.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+                    }
+                }.toList().toTypedArray()
+            }
+            assertTrue("decoded non-silent PCM ct=8 spf=$spf", decodePackets(8, spf, packets) > 1000)
+        }
+    }
 
     @Test fun malformedAndUnknownAudioFailWithoutCrashing() {
         NativeBridge.ensureLoaded()
@@ -29,14 +46,13 @@ class AudioDecodeTest {
         if (android.os.Build.VERSION.SDK_INT <= 22) assertTrue(policy.forceSwAac && policy.forceSwAlac)
     }
 
-    private fun roundTrip(profile: Int, ct: Int) {
+    private fun roundTripAacLc() {
         NativeBridge.ensureLoaded()
         val encoder = MediaCodec.createEncoderByType("audio/mp4a-latm")
         val packets = ArrayList<ByteArray>()
-        var spf = if (ct == 8) 512 else 1024
         try {
             encoder.configure(MediaFormat.createAudioFormat("audio/mp4a-latm", 44100, 2).apply {
-                setInteger(MediaFormat.KEY_AAC_PROFILE, profile)
+                setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
                 setInteger(MediaFormat.KEY_BIT_RATE, 128000)
             }, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             encoder.start()
@@ -63,10 +79,6 @@ class AudioDecodeTest {
                     }
                 }
                 val output = encoder.dequeueOutputBuffer(info, 1000)
-                if (output == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED && ct == 8) {
-                    val csd = encoder.outputFormat.getByteBuffer("csd-0")!!
-                    spf = if (csd.get(2).toInt() and 0x10 != 0) 480 else 512
-                }
                 if (output >= 0) {
                     if (info.size > 0 && info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
                         val buffer = encoder.getOutputBuffer(output)!!
@@ -79,8 +91,7 @@ class AudioDecodeTest {
             }
             assertTrue("encoder completed", receivedEos)
             assertTrue("encoded packets", packets.size > 5)
-            assertTrue("decoded non-silent PCM ct=$ct spf=$spf",
-                decodePackets(ct, spf, packets.toTypedArray()) > 1000)
+            assertTrue("decoded non-silent AAC-LC PCM", decodePackets(4, 1024, packets.toTypedArray()) > 1000)
         } finally {
             try { encoder.stop() } catch (_: Exception) {}
             encoder.release()
