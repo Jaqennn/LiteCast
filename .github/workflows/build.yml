@@ -131,6 +131,8 @@ jobs:
             if grep -E 'JNI DETECTED ERROR|Fatal signal' audio-logcat.txt; then exit 1; fi
             adb shell wm size 1920x1080
             adb shell wm density 240
+            adb shell am instrument -w -r -e class io.github.litecast.tv.RenameDialogTest io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee rename-dialog.txt
+            grep -Eq '^OK \(3 tests\)' rename-dialog.txt
             adb shell am instrument -w -r -e class io.github.litecast.LegacyStartupTest io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
             grep -Eq '^OK \(3 tests\)' instrumentation.txt
             adb exec-out run-as io.github.litecast cat files/diagnostic-preview.png > diagnostic-preview.png
@@ -155,6 +157,7 @@ jobs:
           name: compatibility-api-${{ matrix.api }}
           path: |
             instrumentation.txt
+            rename-dialog.txt
             airplay-*.txt
             audio-*.txt
             native-stages-*.txt

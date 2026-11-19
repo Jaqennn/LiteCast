@@ -16,21 +16,19 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.pressKey
 import androidx.test.core.app.ApplicationProvider
 import io.github.jqssun.airplay.Prefs
+import io.github.jqssun.airplay.R
 import io.github.litecast.LiteCast
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
-import org.robolectric.annotation.GraphicsMode
+import androidx.test.ext.junit.runners.AndroidJUnit4
 
 @OptIn(ExperimentalTestApi::class)
-@RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [29], qualifiers = "zh-rCN-w960dp-h540dp-land-television-xhdpi")
+@RunWith(AndroidJUnit4::class)
 class RenameDialogTest {
     @get:Rule val compose = createComposeRule()
+    private fun label(id: Int) = ApplicationProvider.getApplicationContext<Context>().getString(id)
 
     @Test fun keyboardDonePersistsTrimmedNameOnce() {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -61,7 +59,7 @@ class RenameDialogTest {
         val field = compose.onNode(hasSetTextAction())
         field.performTextReplacement("客厅")
         field.performKeyInput { pressKey(Key.DirectionDown) }
-        compose.onNodeWithText("保存").assertIsFocused()
+        compose.onNodeWithText(label(R.string.lc_save)).assertIsFocused()
             .performKeyInput { pressKey(Key.DirectionCenter) }
         compose.runOnIdle { assertEquals("客厅", saved) }
     }
@@ -71,11 +69,11 @@ class RenameDialogTest {
         compose.setContent { LiteCastTheme { RenameDialog("轻投", {}, { saved = it }) } }
         val field = compose.onNode(hasSetTextAction())
         field.performTextReplacement("   ")
-        compose.onNodeWithText("保存").assertIsNotEnabled()
+        compose.onNodeWithText(label(R.string.lc_save)).assertIsNotEnabled()
         field.performKeyInput { pressKey(Key.DirectionDown) }
-        compose.onNodeWithText("取消").assertIsFocused()
-        compose.onNodeWithText("取消").performKeyInput { pressKey(Key.DirectionUp) }
-        compose.onNodeWithText("恢复为轻投").assertIsEnabled().assertIsFocused()
+        compose.onNodeWithText(label(R.string.lc_cancel)).assertIsFocused()
+        compose.onNodeWithText(label(R.string.lc_cancel)).performKeyInput { pressKey(Key.DirectionUp) }
+        compose.onNodeWithText(label(R.string.lc_rename_reset)).assertIsEnabled().assertIsFocused()
             .performKeyInput { pressKey(Key.DirectionCenter) }
         compose.runOnIdle { assertEquals("轻投", saved) }
     }
