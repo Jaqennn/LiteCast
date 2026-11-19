@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTextReplacement
@@ -43,6 +44,7 @@ class RenameDialogTest {
             }
         }
         val field = compose.onNode(hasSetTextAction())
+        field.performClick().assertIsFocused()
         field.performTextReplacement("  书房  ")
         field.performImeAction()
         compose.runOnIdle {
@@ -57,6 +59,7 @@ class RenameDialogTest {
         var saved = ""
         compose.setContent { LiteCastTheme { RenameDialog("轻投", {}, { saved = it }) } }
         val field = compose.onNode(hasSetTextAction())
+        field.performClick().assertIsFocused()
         field.performTextReplacement("客厅")
         field.performKeyInput { pressKey(Key.DirectionDown) }
         compose.onNodeWithText(label(R.string.lc_save)).assertIsFocused()
@@ -68,6 +71,7 @@ class RenameDialogTest {
         var saved = ""
         compose.setContent { LiteCastTheme { RenameDialog("轻投", {}, { saved = it }) } }
         val field = compose.onNode(hasSetTextAction())
+        field.performClick().assertIsFocused()
         field.performTextReplacement("   ")
         compose.onNodeWithText(label(R.string.lc_save)).assertIsNotEnabled()
         field.performKeyInput { pressKey(Key.DirectionDown) }

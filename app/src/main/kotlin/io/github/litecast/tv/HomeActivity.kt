@@ -57,6 +57,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,12 +67,14 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -392,6 +396,19 @@ internal fun RenameDialog(initial: String, onDismiss: () -> Unit, onSave: (Strin
     val cancelFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val valid = text.isNotBlank()
+    val inputMode = LocalInputModeManager.current
+    val scope = rememberCoroutineScope()
+    fun focusButton(target: FocusRequester) {
+        keyboard?.hide()
+        inputMode.requestInputMode(InputMode.Keyboard)
+        scope.launch {
+            // The input-mode change must reach clickable's non-touch focus policy first.
+            repeat(10) {
+                withFrameNanos { }
+                if (target.requestFocus()) return@launch
+            }
+        }
+    }
     fun save(value: String = text) {
         val name = value.trim()
         if (name.isNotEmpty() && !submitted) {
@@ -422,8 +439,7 @@ internal fun RenameDialog(initial: String, onDismiss: () -> Unit, onSave: (Strin
                         .onPreviewKeyEvent { event ->
                             if (event.key == Key.DirectionDown) {
                                 if (event.type == KeyEventType.KeyDown) {
-                                    keyboard?.hide()
-                                    if (valid) saveFocus.requestFocus() else cancelFocus.requestFocus()
+                                    focusButton(if (valid) saveFocus else cancelFocus)
                                 }
                                 true
                             } else false
@@ -456,7 +472,12 @@ internal fun RenameDialog(initial: String, onDismiss: () -> Unit, onSave: (Strin
             ) { Text(stringResource(R.string.lc_cancel)) }
         },
     )
-    LaunchedEffect(Unit) { runCatching { fieldFocus.requestFocus() } }
+    LaunchedEffect(Unit) {
+        repeat(10) {
+            withFrameNanos { }
+            if (fieldFocus.requestFocus()) return@LaunchedEffect
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------- settings
