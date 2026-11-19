@@ -33,6 +33,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cast
@@ -60,10 +62,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
@@ -76,6 +86,7 @@ import io.github.jqssun.airplay.R
 import io.github.jqssun.airplay.get
 import io.github.jqssun.airplay.hasLocalNetwork
 import io.github.jqssun.airplay.observe
+import io.github.jqssun.airplay.ui.dpadFocus
 import io.github.jqssun.airplay.service.AirPlayService
 import io.github.litecast.LiteCast
 import io.github.litecast.dlna.DlnaRenderer
@@ -372,9 +383,23 @@ private fun NoticeBar(
 }
 
 @Composable
-private fun RenameDialog(initial: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    var text by remember { mutableStateOf(initial) }
-    val focus = remember { FocusRequester() }
+internal fun RenameDialog(initial: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    var text by remember(initial) { mutableStateOf(initial) }
+    var submitted by remember { mutableStateOf(false) }
+    val fieldFocus = remember { FocusRequester() }
+    val saveFocus = remember { FocusRequester() }
+    val resetFocus = remember { FocusRequester() }
+    val cancelFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val valid = text.isNotBlank()
+    fun save(value: String = text) {
+        val name = value.trim()
+        if (name.isNotEmpty() && !submitted) {
+            submitted = true
+            keyboard?.hide()
+            onSave(name)
+        }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Tv.SurfaceRaised,
@@ -386,17 +411,52 @@ private fun RenameDialog(initial: String, onDismiss: () -> Unit, onSave: (String
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it.take(48) },
+                    label = { Text(stringResource(R.string.setting_server_name)) },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                    isError = !valid,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { save() }),
+                    modifier = Modifier.fillMaxWidth()
+                        .focusRequester(fieldFocus)
+                        .focusProperties { down = if (valid) saveFocus else cancelFocus }
+                        .onPreviewKeyEvent { event ->
+                            if (event.key == Key.DirectionDown) {
+                                if (event.type == KeyEventType.KeyDown) {
+                                    keyboard?.hide()
+                                    if (valid) saveFocus.requestFocus() else cancelFocus.requestFocus()
+                                }
+                                true
+                            } else false
+                        },
+                )
+                Spacer(Modifier.height(12.dp))
+                PillButton(
+                    stringResource(R.string.lc_rename_reset),
+                    modifier = Modifier.focusRequester(resetFocus)
+                        .focusProperties { up = fieldFocus; down = if (valid) saveFocus else cancelFocus },
+                    onClick = { save(LiteCast.DEFAULT_NAME) },
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = { text.trim().takeIf { it.isNotEmpty() }?.let(onSave) }) { Text(stringResource(R.string.lc_save)) }
+            TextButton(
+                onClick = { save() },
+                enabled = valid && !submitted,
+                modifier = Modifier.focusRequester(saveFocus)
+                    .focusProperties { up = resetFocus; left = cancelFocus }
+                    .dpadFocus(),
+            ) { Text(stringResource(R.string.lc_save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.lc_cancel)) } },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.focusRequester(cancelFocus)
+                    .focusProperties { up = resetFocus; right = if (valid) saveFocus else resetFocus }
+                    .dpadFocus(),
+            ) { Text(stringResource(R.string.lc_cancel)) }
+        },
     )
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    LaunchedEffect(Unit) { runCatching { fieldFocus.requestFocus() } }
 }
 
 // ---------------------------------------------------------------------------------------- settings

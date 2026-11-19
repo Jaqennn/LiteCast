@@ -37,8 +37,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 21
         targetSdk = 37
-        versionCode = 9
-        versionName = "0.2.3"
+        versionCode = 10
+        versionName = "0.2.4"
 
         externalNativeBuild {
             cmake {
@@ -89,9 +89,8 @@ android {
                 test.systemProperty("litecast.screenshots", "true")
                 test.systemProperty("roborazzi.test.record", "true")
             }
-            providers.gradleProperty("robolectricRepo").orNull?.let {
-                test.systemProperty("robolectric.dependency.repo.url", it)
-            }
+            test.systemProperty("robolectric.dependency.repo.url",
+                providers.gradleProperty("robolectricRepo").getOrElse("https://repo.maven.apache.org/maven2"))
         }
     }
 

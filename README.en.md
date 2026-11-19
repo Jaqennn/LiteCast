@@ -35,7 +35,7 @@
 
 | From | How | Works |
 |---|---|---|
-| iPhone / iPad / Mac: screen mirroring | Control Center → Screen Mirroring → "TV name · 轻投" | ✅ Picture and sound |
+| iPhone / iPad / Mac: screen mirroring | Control Center → Screen Mirroring → "轻投" | ✅ Picture and sound |
 | iPhone / iPad / Mac: AirPlay video | The AirPlay button in Photos, Safari and AirPlay apps | ✅ The TV streams it; the phone can sleep |
 | iPhone / iPad / Mac: AirPlay music | Apple Music and other music apps | ✅ Cover, title and progress |
 | Any phone: the TV / cast button in video apps (DLNA) | Bilibili, iQiyi, Tencent Video, Youku, live-streaming apps and more | ✅ Mostly |

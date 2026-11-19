@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4
+
+- Default AirPlay and DLNA names are now simply “轻投”, without TV brand/model prefixes. Upgrade recognises old generated names and preserves custom names and receiver settings.
+- Rename supports the keyboard Done action, an explicit remote Down → Save focus path and visible focused buttons. Blank names cannot be saved; Restore default name saves “轻投” directly.
+- Added migration and remote/IME rename regression coverage; use Maven Central's canonical endpoint for Robolectric test dependencies.
+
 ## 0.2.3
 
 - Removed the feedback survey QR code and survey links; focus the diagnostic report button and retain device details and photo feedback guidance.

@@ -45,7 +45,7 @@ class ActivitySmokeTest {
         val prefs = context.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE)
         assertTrue(prefs.getBoolean(Prefs.BOOT_AUTO_START.key, false))
         assertTrue(prefs.getBoolean(LiteCast.PREF_RECEIVER_ENABLED, true))
-        assertTrue(prefs.getString(Prefs.SERVER_NAME.key, "")!!.endsWith("· 轻投"))
+        assertEquals("轻投", prefs.getString(Prefs.SERVER_NAME.key, ""))
         assertEquals(context.getString(io.github.jqssun.airplay.R.string.lc_app_name), "轻投")
     }
 }

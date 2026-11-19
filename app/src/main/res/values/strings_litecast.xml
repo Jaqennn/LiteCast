@@ -94,4 +94,5 @@
     <string name="lc_setting_feedback">Feedback</string>
     <string name="lc_setting_feedback_desc">View and photograph diagnostic reports and device details</string>
     <string name="lc_error_feedback_hint">Can\'t cast? Tell us: LiteCast home screen → Feedback</string>
+    <string name="lc_rename_reset">Restore default name</string>
 </resources>

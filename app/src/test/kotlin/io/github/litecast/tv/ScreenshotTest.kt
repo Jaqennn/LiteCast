@@ -55,7 +55,7 @@ class ScreenshotTest {
     }
 
     private val readyHome = HomeUi(
-        name = "客厅电视 · 轻投",
+        name = "轻投",
         airplay = AirPlayService.ServerState.RUNNING,
         dlna = DlnaRenderer.Status.READY,
         dlnaEnabled = true,
@@ -167,7 +167,7 @@ class ScreenshotEnglishTest {
     }
 
     private val home = HomeUi(
-        name = "Living Room TV · LiteCast",
+        name = "轻投",
         airplay = AirPlayService.ServerState.RUNNING,
         dlna = DlnaRenderer.Status.READY,
         dlnaEnabled = true,
