@@ -125,6 +125,14 @@ jobs:
           } > body.md
           gh release create "$TAG" LiteCast.apk --target "$(git rev-parse HEAD)" --title "轻投 $VERSION" --notes-file body.md
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-native-symbols
+          path: |
+            app/build/outputs/native-debug-symbols/
+            app/build/outputs/mapping/release/
+          if-no-files-found: error
+
       - name: Remove signing material
         if: always()
         run: rm -f "$RUNNER_TEMP/release.jks" local.properties
