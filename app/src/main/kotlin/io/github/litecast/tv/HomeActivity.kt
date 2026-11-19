@@ -396,19 +396,7 @@ internal fun RenameDialog(initial: String, onDismiss: () -> Unit, onSave: (Strin
     val cancelFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val valid = text.isNotBlank()
-    val inputMode = LocalInputModeManager.current
     val scope = rememberCoroutineScope()
-    fun focusButton(target: FocusRequester) {
-        keyboard?.hide()
-        inputMode.requestInputMode(InputMode.Keyboard)
-        scope.launch {
-            // The input-mode change must reach clickable's non-touch focus policy first.
-            repeat(10) {
-                withFrameNanos { }
-                if (target.requestFocus()) return@launch
-            }
-        }
-    }
     fun save(value: String = text) {
         val name = value.trim()
         if (name.isNotEmpty() && !submitted) {
@@ -422,6 +410,21 @@ internal fun RenameDialog(initial: String, onDismiss: () -> Unit, onSave: (Strin
         containerColor = Tv.SurfaceRaised,
         title = { Text(stringResource(R.string.lc_rename_title), style = Tv.Title) },
         text = {
+            // Dialogs have their own window and input-mode/keyboard controllers.
+            val dialogInputMode = LocalInputModeManager.current
+            val dialogKeyboard = LocalSoftwareKeyboardController.current
+            fun focusButton(target: FocusRequester) {
+                dialogKeyboard?.hide()
+                scope.launch {
+                    var stableFrames = 0
+                    repeat(10) {
+                        dialogInputMode.requestInputMode(InputMode.Keyboard)
+                        withFrameNanos { }
+                        if (target.requestFocus()) stableFrames++ else stableFrames = 0
+                        if (stableFrames >= 3) return@launch
+                    }
+                }
+            }
             Column {
                 Text(stringResource(R.string.lc_rename_body), style = Tv.Caption)
                 Spacer(Modifier.height(12.dp))
@@ -449,7 +452,7 @@ internal fun RenameDialog(initial: String, onDismiss: () -> Unit, onSave: (Strin
                 PillButton(
                     stringResource(R.string.lc_rename_reset),
                     modifier = Modifier.focusRequester(resetFocus)
-                        .focusProperties { up = fieldFocus; down = if (valid) saveFocus else cancelFocus },
+                        .focusProperties { canFocus = true; up = fieldFocus; down = if (valid) saveFocus else cancelFocus },
                     onClick = { save(LiteCast.DEFAULT_NAME) },
                 )
             }
@@ -459,7 +462,7 @@ internal fun RenameDialog(initial: String, onDismiss: () -> Unit, onSave: (Strin
                 onClick = { save() },
                 enabled = valid && !submitted,
                 modifier = Modifier.focusRequester(saveFocus)
-                    .focusProperties { up = resetFocus; left = cancelFocus }
+                    .focusProperties { canFocus = valid && !submitted; up = resetFocus; left = cancelFocus }
                     .dpadFocus(),
             ) { Text(stringResource(R.string.lc_save)) }
         },
@@ -467,7 +470,7 @@ internal fun RenameDialog(initial: String, onDismiss: () -> Unit, onSave: (Strin
             TextButton(
                 onClick = onDismiss,
                 modifier = Modifier.focusRequester(cancelFocus)
-                    .focusProperties { up = resetFocus; right = if (valid) saveFocus else resetFocus }
+                    .focusProperties { canFocus = true; up = resetFocus; right = if (valid) saveFocus else resetFocus }
                     .dpadFocus(),
             ) { Text(stringResource(R.string.lc_cancel)) }
         },
