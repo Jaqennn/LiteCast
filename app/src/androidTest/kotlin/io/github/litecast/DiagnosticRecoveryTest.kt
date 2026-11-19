@@ -48,4 +48,16 @@ class DiagnosticRecoveryTest {
         assertTrue(Diagnostics.needsRecovery())
         Diagnostics.allowRetry()
     }
+
+    @Test fun prepareNativeStageTrail() {
+        java.io.File(Diagnostics.nativeTracePath()).writeText(
+            "1730000000.000 tid=123 connection.accepted\n1730000000.001 tid=123 request.pair-verify\n")
+    }
+
+    @Test fun verifyNativeStageTrailAfterRestart() {
+        val report = checkNotNull(Diagnostics.reports.value)
+        // An unresolved fatal report must keep its recovery semantics and gain the trail.
+        assertTrue(report.detail.contains("request.pair-verify"))
+        assertTrue(report.detail.contains("not a crash stack"))
+    }
 }

@@ -71,7 +71,7 @@
 |---|---|---|
 | 索尼 X90J 国行（系统里的型号写作 BRAVIA 4K VH2） | Android 12 | ✅ 作者自用（0.2.1）：屏幕镜像、AirPlay 视频和音乐、视频 App 投屏都正常，抖音投屏 1080P；关机重启后不用打开轻投，直接投 B 站也正常；和乐播同时开着不冲突。镜像时在手机上放高清视频会有点卡，看视频建议用 App 里的投屏按钮 |
 
-Android 5.0–5.1 还没有真机实测。你的电视能用或不能用，都欢迎 [填问卷告诉我们](https://wj.qq.com/s2/28601337/57hw/)（不用注册，也可以 [在 GitHub 上提](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml)），会整理进这张表。
+你的电视能用或不能用，都欢迎 [在 GitHub 上提交机型反馈](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml)，也可以在社媒私信轻投作者。
 
 ## 下载
 
@@ -261,20 +261,10 @@ adb shell am start -n io.github.litecast/io.github.litecast.tv.HomeActivity
 
 0.2.2 增加了可拍照的「故障记录」页面：主页「反馈」→「故障记录」。启动出错时会尽量保存错误，退出后再次打开可查看。记录仅保存在本机；部分底层崩溃只能留下最后启动阶段。具体说明见 [问题反馈与故障记录](docs/diagnostics.md)。
 
-装了轻投的话最方便：主页右上角点「反馈」，电视上会显示问卷二维码，旁边写好了这台电视的品牌、型号和安卓版本，手机扫码照着填就行。
+反馈时可用手机拍下故障记录各页，附上出错前的操作，再提交到 GitHub Issue 或在社媒私信轻投作者。记录中已包含电视品牌、型号、安卓版本和轻投版本。若无法安装或打开轻投，可从电视的「设置 → 关于」查看设备信息，并附上安装提示或出错画面。
 
-<img src="docs/screenshots/feedback.png" width="480" alt="轻投的反馈页：问卷二维码和自动读出的电视信息">
-
-没装或者装不上：用微信扫下面的二维码，或者打开 [腾讯问卷](https://wj.qq.com/s2/28601337/57hw/)，1 分钟就能填完，不用注册，国内网络直接能打开。
-
-<img src="docs/feedback-qr.png" width="144" alt="轻投使用反馈问卷二维码">
-
-有 GitHub 账号的话，也可以在这里提：
-
-- [机型反馈](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml)：你的电视能用还是不能用
-- [问题反馈](https://github.com/Jaqennn/LiteCast/issues/new?template=bug.yml)：投屏失败、卡顿、找不到电视、闪退等
-
-至少写上电视品牌就行；知道型号和安卓版本更好，一般在电视的 设置 → 关于 里，也可以看电视背面的标签。
+- [机型反馈](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml)
+- [问题反馈](https://github.com/Jaqennn/LiteCast/issues/new?template=bug.yml)
 
 ## 工作原理
 

@@ -10,17 +10,15 @@
 #include <android/log.h>
 #include "android_raop_callbacks.h"
 #include "audio_engine.h"
+#include "android_jni_thread.h"
+#include "native_trace.h"
 
 #define TAG "AirPlayNative"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 static JNIEnv *_get_env(android_callback_ctx_t *ctx) {
-    JNIEnv *env = NULL;
-    int status = (*ctx->jvm)->GetEnv(ctx->jvm, (void **)&env, JNI_VERSION_1_6);
-    if (status == JNI_EDETACHED) {
-        (*ctx->jvm)->AttachCurrentThread(ctx->jvm, &env, NULL);
-    }
+    JNIEnv *env = ctx ? litecast_jni_env(ctx->jvm) : NULL;
     /* Clear any pending exception from a previous callback on this thread,
        otherwise JNI calls like NewByteArray will fatally abort. */
     if (env && (*env)->ExceptionCheck(env)) {
@@ -112,7 +110,7 @@ static void _audio_process(void *cls, raop_ntp_t *ntp, audio_decode_struct *data
 static void _video_process(void *cls, raop_ntp_t *ntp, video_decode_struct *data) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
     JNIEnv *env = _get_env(ctx);
-    if (!env || !data->data || data->data_len <= 0) return;
+    if (!env || !data || !data->data || data->data_len <= 0) return;
     /* raop_rtp_mirror marks undecryptable packets by setting byte 0 (start code) to 1 */
     if (data->data[0]) {
         LOGE("video packet decryption failed, dropping %d bytes", data->data_len);
@@ -120,6 +118,7 @@ static void _video_process(void *cls, raop_ntp_t *ntp, video_decode_struct *data
     }
 
     jbyteArray arr = (*env)->NewByteArray(env, data->data_len);
+    if (!arr) return;
     (*env)->SetByteArrayRegion(env, arr, 0, data->data_len, (jbyte *)data->data);
     (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_video_data,
                            arr, (jlong)data->ntp_time_local, (jboolean)data->is_h265);
@@ -218,7 +217,11 @@ static void _video_reset(void *cls, reset_type_t t) {
         raop_remove_hls_connections(ctx->raop);
     }
 }
-static void _audio_flush(void *cls) { LOGI("audio_flush"); }
+static void _audio_flush(void *cls) {
+    android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
+    LOGI("audio_flush");
+    if (ctx->audio_engine) audio_engine_flush(ctx->audio_engine);
+}
 
 static void _audio_stop_coverart_rendering(void *cls) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
@@ -303,7 +306,7 @@ static bool _check_register(void *cls, const char *pk_str) {
 
 static void _video_play(void *cls, const char *location, const float start_position) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
-    LOGI("video_play: %s @ %.2fs", location ? location : "(null)", start_position);
+    litecast_trace("callback.video-play");
     pthread_mutex_lock(&ctx->playback_info_lock);
     ctx->play_ready = 0;
     pthread_mutex_unlock(&ctx->playback_info_lock);
@@ -311,6 +314,7 @@ static void _video_play(void *cls, const char *location, const float start_posit
     JNIEnv *env = _get_env(ctx);
     if (!env || !location) return;
     jstring jloc = (*env)->NewStringUTF(env, location);
+    if (!jloc) return;
     (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_video_play, jloc, (jfloat)start_position);
     (*env)->DeleteLocalRef(env, jloc);
 }
@@ -322,6 +326,7 @@ static void _video_wait_ready(void *cls) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     ts.tv_sec += 10; // hold for max 10s
+    litecast_trace("callback.wait-player");
     pthread_mutex_lock(&ctx->playback_info_lock);
     while (!ctx->play_ready) {
         if (pthread_cond_timedwait(&ctx->play_ready_cond, &ctx->playback_info_lock, &ts) == ETIMEDOUT) break;

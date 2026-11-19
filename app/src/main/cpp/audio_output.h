@@ -7,6 +7,7 @@
 #include <mutex>
 
 #include "log_sink.h"
+#include "native_trace.h"
 #include "timeline_buffer.h"
 
 class AudioOutput;
@@ -169,6 +170,11 @@ private:
                   api, lowLatency ? " (low-latency)" : "", mmap ? "yes" : "no",
                   mStream->getBufferSizeInFrames(), mStream->getBufferCapacityInFrames(),
                   mStream->getFramesPerBurst(), mStream->getSampleRate());
+        char stage[160];
+        snprintf(stage, sizeof(stage), "audio.output.%s buffer_frames=%d burst_frames=%d rate=%d",
+                 api, mStream->getBufferSizeInFrames(), mStream->getFramesPerBurst(),
+                 mStream->getSampleRate());
+        litecast_trace(stage); // controlled numeric capabilities, once per open
         // adaptive tuner needs final buffer size
         mTimeline->noteOutputBufferFrames(mStream->getBufferSizeInFrames());
         return true;

@@ -13,6 +13,7 @@
 #include <string>
 
 #include "audio_engine.h"
+#include "native_trace.h"
 #include "audio_decoder.h"
 #include "audio_output.h"
 #include "log_sink.h"
@@ -89,8 +90,20 @@ struct AudioEngine {
         }
     }
 
-    // touches decoder: must not run concurrently with decode()
+    void flush() {
+        std::lock_guard<std::mutex> decodeLock(mDecodeLock);
+        mDecoder = {}; // joins the MediaCodec drain thread before resetting its timeline
+        std::lock_guard<std::mutex> lk(mRebuildLock);
+        if (mTimeline) mTimeline->requestFlush();
+        mRetryAtNs = 0;
+        mLastDiagnosticNs = 0;
+        mPackets = 0;
+        litecast_trace("audio.flush.applied");
+    }
+
+    // No concurrent callbacks are allowed during destroy.
     void stop() {
+        std::lock_guard<std::mutex> decodeLock(mDecodeLock);
         if (mOutput) mOutput->stop();
         mOutputActive = false;
         mDecoder = {};
@@ -126,6 +139,7 @@ struct AudioEngine {
 
     // touches decoder: must not run concurrently with stop()
     void decode(const uint8_t *data, size_t len, int ct, int64_t ptsNs) {
+        std::lock_guard<std::mutex> decodeLock(mDecodeLock);
         if (!mTimeline) return;
         if (mPending.load(std::memory_order_relaxed)) {
             if (AudioConfig *raw = mPending.exchange(nullptr, std::memory_order_acquire)) {
@@ -145,17 +159,30 @@ struct AudioEngine {
         const bool changed = ct != mDecoder.ct || wantConfig != mDecoder.format;
         if (changed || (!mDecoder.decoder && monoNs() >= mRetryAtNs)) {
             mDecoder = {}; // release old decoder first to free resources
+            if (changed) mTimeline->requestFlush();
+            litecast_trace("audio.decoder.init.begin");
             mDecoder = {ct, wantConfig,
                         makeDecoder(ct, wantConfig.spf, mSampleRate, mChannels, *mTimeline,
                                     mDecLatency, *mLog,
                                     ct == CT_ALAC ? mApplied->forceSwAlac : mApplied->forceSwAac,
                                     mApplied->realtimePriority, mApplied->lowLatency)};
+            litecast_trace(mDecoder.decoder ? "audio.decoder.init.ready" : "audio.decoder.init.failed");
             mRetryAtNs = mDecoder.decoder ? 0 : monoNs() + DECODER_RETRY_NS;
             // codec switch is definitely a discontinuity
             mTimeline->reanchorTracker();
         }
         if (mDecoder.decoder && !mDecoder.decoder->decode(data, len, ptsNs))
             mDecodeErrors.fetch_add(1, std::memory_order_relaxed);
+        ++mPackets;
+        const int64_t now = monoNs();
+        if (now - mLastDiagnosticNs >= 5 * NS_PER_SEC) {
+            mLastDiagnosticNs = now;
+            const auto t = mTimeline->debugInfo();
+            const auto d = mDecLatency.debugInfo();
+            // Numeric, bounded, rate-limited snapshots; no fsync on the audio path.
+            litecast_trace_audio(ct, wantConfig.spf, t.backlogMs, t.tunedCushionMs,
+                d.meanUs, d.maxUs, mDecodeErrors.load(), mPackets, ptsNs / 1000000);
+        }
     }
 
 private:
@@ -187,7 +214,10 @@ private:
     // all other threads read them under mRebuildLock; mDecoder is decode-thread-only
     // teardown stop() requires caller to guarantee no in-flight or future decode() calls
 
+    std::mutex mDecodeLock; // decode/flush serialize; always acquired before mRebuildLock
     std::mutex mRebuildLock;
+    int64_t mLastDiagnosticNs = 0;
+    unsigned mPackets = 0;
     std::shared_ptr<TimelineBuffer> mTimeline; // guarded by mRebuildLock
     std::shared_ptr<AudioOutput> mOutput;      // guarded by mRebuildLock
     bool mRunning = false;                     // requested output state, guarded by mRebuildLock
@@ -242,6 +272,10 @@ bool audio_engine_configure(AudioEngine *engine, int cushionMs, int percentilePc
 
 void audio_engine_set_client_gain(AudioEngine *engine, float gain) {
     if (engine) engine->setClientGain(gain);
+}
+
+void audio_engine_flush(AudioEngine *engine) {
+    if (engine) engine->flush();
 }
 
 void audio_engine_on_format(AudioEngine *engine, int ct, int spf) {

@@ -1,6 +1,17 @@
 # Changelog
 
-## Unreleased
+## 0.2.3
+
+- Removed the feedback survey QR code and survey links; focus the diagnostic report button and retain device details and photo feedback guidance.
+- Fixed AirPlay JNI thread ownership, session shutdown and device information data; persist bounded native diagnostic stages.
+- Automatically use software audio decoding on Android 5.0/5.1; flush stale audio on stream changes and retry video decoder startup failures.
+- Added native thread/audio buffer regression checks and AAC-LC/AAC-ELD decoding coverage across API 21/22/23/31.
+- Keep automatic audio buffering enabled. Slow audio recovery after seeking and freezes during some DLNA-to-mirroring transitions remain under investigation.
+
+## 0.2.2
+
+- Fixed Android 5.x native startup and added photo-ready diagnostic reports with recovery across process restarts.
+
 
 - English: the notification now says "LiteCast is running · Receiving AirPlay and DLNA casts"
   instead of the upstream "AirPlay Server Running", and the auto-start settings say they start

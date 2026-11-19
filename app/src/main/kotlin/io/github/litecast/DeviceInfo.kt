@@ -10,8 +10,8 @@ import android.os.Build
 import java.util.Locale
 
 /**
- * What the feedback page shows next to the survey's QR code, so people copy it instead of
- * hunting through the TV's settings. The model is the system's own name for the set (Sony's
+ * Device details shown on the feedback page and included in diagnostic reports.
+ * The model is the system's own name for the set (Sony's
  * "BRAVIA 4K VH2", Xiaomi's "MiTV-MFTR0"), which can differ from the box but is what tells
  * platforms apart.
  */
@@ -28,7 +28,7 @@ object DeviceInfo {
     // Chip and platform vendors that boxes report instead of the brand on the box
     private val generic = setOf("", "unknown", "android", "generic", "alps", "amlogic", "rockchip", "allwinner", "mstar", "realtek", "mediatek", "hisilicon")
 
-    // Lower-case brand or manufacturer as Build reports it -> the name people pick in the survey
+    // Localized labels for brand or manufacturer names reported by Android
     private val chinese = linkedMapOf(
         "sony" to "索尼", "xiaomi" to "小米", "redmi" to "Redmi", "mitv" to "小米",
         "tcl" to "TCL", "ffalcon" to "雷鸟", "hisense" to "海信", "vidda" to "Vidda",

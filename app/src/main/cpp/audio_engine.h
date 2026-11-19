@@ -30,6 +30,9 @@ bool audio_engine_configure(AudioEngine *engine, int cushionMs, int percentilePc
 /* sender volume as linear output gain, 1 = unity */
 void audio_engine_set_client_gain(AudioEngine *engine, float gain);
 
+/* Flush decoder and queued PCM without stopping video. */
+void audio_engine_flush(AudioEngine *engine);
+
 /* sender is switching audio formats */
 void audio_engine_on_format(AudioEngine *engine, int ct, int spf);
 

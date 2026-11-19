@@ -115,7 +115,7 @@ LiteCast changes no system settings and disables nothing, so uninstalling restor
 - **Playback speed, portrait videos?** Speed control isn't there yet. Portrait videos keep black bars on a landscape TV.
 - **One app's casts drop after a while, or it doesn't list LiteCast**: some apps only cast to their own TV apps or block third-party receivers. Try mirroring, and tell us which app.
 - **Security**: no account, no data collected. LiteCast only asks for network and local discovery, start at boot, display over other apps (to pop up a cast), a foreground service with its notification (to wait in the background) and keeping the screen on while casting; no storage, camera, microphone, contacts or location. Casting protocols have no password (AirPlay can require a PIN in settings), so use it on your home network only.
-- **Feedback**: the Feedback button on LiteCast's home screen shows a survey QR code (in Chinese) with your TV's brand, model and Android version beside it; on GitHub, [report your TV](https://github.com/Jaqennn/LiteCast/issues/new?template=device.yml) or [a problem](https://github.com/Jaqennn/LiteCast/issues/new?template=bug.yml).
+- **Feedback**: open Feedback → Diagnostic report on the TV. Photograph each page and include what you did before the problem. The report includes the TV brand, model, Android version and LiteCast version. [Open a GitHub issue](https://github.com/Jaqennn/LiteCast/issues/new?template=bug.yml) or send the photos to the LiteCast author in a private message on social media.
 
 ## How it is built
 

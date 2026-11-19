@@ -146,7 +146,7 @@
     <string name="setting_sw_alac">Force software ALAC decoder</string>
     <string name="setting_sw_alac_desc">Always use software ALAC decoder instead of system decoder, may affect latency</string>
     <string name="setting_sw_aac">Force software AAC decoder</string>
-    <string name="setting_sw_aac_desc">Always use software AAC decoder instead of system decoder, may affect latency</string>
+    <string name="setting_sw_aac_desc">Android 5.x automatically uses software audio decoding for compatibility. On newer systems this switch selects the software AAC decoder; latency may vary.</string>
     <string name="setting_sync_client_volume">Sync sender volume</string>
     <string name="setting_sync_client_volume_desc">Use sender volume for receiver volume automatically</string>
 
@@ -201,4 +201,5 @@
     <string name="debug_audio_glitch">Glitch: trim=%1$d drop=%2$d sil=%3$d ur=%4$d xrun=%5$d</string>
     <string name="debug_audio_decode">Decode: %1$s</string>
     <string name="debug_clients">Senders: %1$d</string>
+    <string name="lc_mirror_retry_failed">The TV video decoder is busy. Please disconnect and reconnect screen mirroring.</string>
 </resources>

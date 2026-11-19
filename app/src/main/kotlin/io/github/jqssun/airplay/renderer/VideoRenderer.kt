@@ -12,6 +12,34 @@ class VideoRenderer(ctx: Context) {
 
     private val lock = Object()
     private val pipeline = VideoPipeline()
+    private val retryExecutor = java.util.concurrent.ScheduledThreadPoolExecutor(1).apply {
+        setKeepAliveTime(5, java.util.concurrent.TimeUnit.SECONDS)
+        allowCoreThreadTimeOut(true)
+    }
+    private data class PendingFrame(val data: ByteArray, val ptsNs: Long, val h265: Boolean)
+    var stageCallback: ((String) -> Unit)? = null
+    var recoveryFailedCallback: (() -> Unit)? = null
+    private val recovery = VideoStartRecovery<PendingFrame>(
+        schedule = { delay, task ->
+            retryExecutor.schedule({ synchronized(lock) { task() } }, delay,
+                java.util.concurrent.TimeUnit.MILLISECONDS)
+        },
+        recover = { frames ->
+            stageCallback?.invoke("video.decoder.retry")
+            startCodec(frames.first().h265)
+            check(codec != null) { "video surface unavailable" }
+            for (frame in frames) {
+                check(_feedToCodec(frame.data, frame.ptsNs)) { "retry input queue full" }
+                drainOutput()
+            }
+            stageCallback?.invoke("video.decoder.recovered")
+        },
+        failedAttempt = { stopCodec() },
+        exhausted = {
+            stageCallback?.invoke("video.decoder.retry-exhausted")
+            recoveryFailedCallback?.invoke()
+        },
+    )
     val selector = DecoderSelector(ctx)
     private var avcDecoder: MediaCodecInfo? = null
     private var hevcDecoder: MediaCodecInfo? = null
@@ -49,6 +77,7 @@ class VideoRenderer(ctx: Context) {
 
     fun setResolution(w: Int, h: Int) = synchronized(lock) {
         if (w == videoWidth && h == videoHeight) return@synchronized
+        recovery.cancel()
         videoWidth = w
         videoHeight = h
         pipeline.setVideoSize(w, h)
@@ -85,9 +114,9 @@ class VideoRenderer(ctx: Context) {
             .reduceOrNull { (w1, h1), (w2, h2) -> minOf(w1, w2) to minOf(h1, h2) } ?: (1920 to 1080)
 
     // codec per mirror session; pipeline persists across sessions
-    fun startSession() = synchronized(lock) { _resetStats() }
+    fun startSession() = synchronized(lock) { recovery.cancel(); stopCodec(); _resetStats() }
 
-    fun stopSession() = synchronized(lock) { stopCodec() }
+    fun stopSession() = synchronized(lock) { recovery.cancel(); stopCodec() }
 
     private fun _resetStats() {
         fps = 0; bitrateBps = 0; frameCount = 0; codecName = ""
@@ -125,6 +154,11 @@ class VideoRenderer(ctx: Context) {
             _updateStats(data.size)
             if (videoWidth == 0 || videoHeight == 0) return
 
+            if (recovery.pending && isH265 != currentH265) recovery.cancel()
+            if (recovery.pending) {
+                recovery.append(PendingFrame(data, ntpTimeNs, isH265), data.size)
+                return
+            }
             if (codec == null || isH265 != currentH265) {
                 // a stale reference frame decodes to corruption, so wait for a keyframe to (re)start
                 if (!_isKeyframe(data, isH265)) {
@@ -135,7 +169,18 @@ class VideoRenderer(ctx: Context) {
             }
 
             try {
-                if (codec == null) startCodec(isH265)
+                if (codec == null) {
+                    try {
+                        startCodec(isH265)
+                        check(codec != null) { "video surface unavailable" }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Video startup failed; retrying after resource release", e)
+                        stopCodec()
+                        stageCallback?.invoke("video.decoder.retry-scheduled")
+                        recovery.begin(PendingFrame(data, ntpTimeNs, isH265), data.size)
+                        return
+                    }
+                }
                 _feedToCodec(data, ntpTimeNs)
                 drainOutput()
             } catch (e: Exception) {
@@ -145,24 +190,25 @@ class VideoRenderer(ctx: Context) {
         }
     }
 
-    private fun _feedToCodec(data: ByteArray, ntpTimeNs: Long) {
-        val c = codec ?: return
+    private fun _feedToCodec(data: ByteArray, ntpTimeNs: Long): Boolean {
+        val c = codec ?: return false
         // dropping a frame desyncs decoder until the next keyframe, but source would only send one on (re)connect
         val retries = if (firstFrameQueued) FEED_RETRIES else FIRST_FEED_RETRIES
         repeat(retries) {
             val idx = c.dequeueInputBuffer(FEED_WAIT_US)
             if (idx >= 0) {
-                val buf = c.getInputBuffer(idx) ?: return
+                val buf = c.getInputBuffer(idx) ?: return false
                 buf.clear()
                 buf.put(data)
                 c.queueInputBuffer(idx, 0, data.size, ntpTimeNs / 1000, 0)
                 firstFrameQueued = true
-                return
+                return true
             }
             drainOutput()
         }
         droppedFrames++
         Log.w(TAG, "Decoder input queue full; dropping frame. drops=$droppedFrames")
+        return false
     }
 
     private fun _isKeyframe(data: ByteArray, isH265: Boolean): Boolean {
@@ -257,10 +303,9 @@ class VideoRenderer(ctx: Context) {
         _ptsBaseUs = Long.MIN_VALUE
         _wallBaseNs = 0L
         codec?.let {
-            try {
-                it.stop()
-                it.release()
-            } catch (_: Exception) {}
+            try { it.stop() } catch (_: Exception) {}
+            // release must still run when stop throws on an old vendor codec.
+            try { it.release() } catch (_: Exception) {}
         }
         codec = null
     }
@@ -287,6 +332,7 @@ class VideoRenderer(ctx: Context) {
     }
 
     fun release() = synchronized(lock) {
+        recovery.cancel()
         stopCodec()
         pipeline.release()
         _resetStats()

@@ -85,16 +85,13 @@
     <string name="lc_action_feedback">Feedback</string>
     <string name="lc_feedback_title">Feedback</string>
     <string name="lc_feedback_back">Back</string>
-    <string name="lc_feedback_body">Scan with your phone to fill in a one-minute survey about how LiteCast works on this TV.</string>
-    <string name="lc_feedback_qr">QR code of the feedback survey</string>
-    <string name="lc_feedback_scan">No account needed · the survey is in Chinese</string>
-    <string name="lc_feedback_copy">Copy these into the survey:</string>
+    <string name="lc_feedback_body">If LiteCast crashes or casting fails, open Diagnostic report, photograph each page, and tell us what you did before the problem.</string>
+    <string name="lc_feedback_channels">Attach the photos at github.com/Jaqennn/LiteCast/issues or send them to the LiteCast author in a private message on social media.</string>
     <string name="lc_feedback_brand">Brand</string>
     <string name="lc_feedback_model">Model</string>
     <string name="lc_feedback_android">Android</string>
     <string name="lc_feedback_version">LiteCast</string>
-    <string name="lc_feedback_model_note">The model is the TV system\'s own name and may differ from the box; use the one here. On GitHub: github.com/Jaqennn/LiteCast/issues</string>
     <string name="lc_setting_feedback">Feedback</string>
-    <string name="lc_setting_feedback_desc">Scan a QR code to tell us how LiteCast works on this TV</string>
+    <string name="lc_setting_feedback_desc">View and photograph diagnostic reports and device details</string>
     <string name="lc_error_feedback_hint">Can\'t cast? Tell us: LiteCast home screen → Feedback</string>
 </resources>

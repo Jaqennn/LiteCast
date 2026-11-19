@@ -147,7 +147,7 @@
     <string name="setting_sw_alac">强制使用软件 ALAC 解码</string>
     <string name="setting_sw_alac_desc">始终使用软件 ALAC 解码器而不是系统解码器，可能影响延迟</string>
     <string name="setting_sw_aac">强制使用软件 AAC 解码</string>
-    <string name="setting_sw_aac_desc">始终使用软件 AAC 解码器而不是系统解码器，可能影响延迟</string>
+    <string name="setting_sw_aac_desc">Android 5.x 自动使用软件音频解码以提高兼容性；较新系统可通过此开关选择软件 AAC 解码，延迟因设备而异。</string>
     <string name="setting_sync_client_volume">同步发送端音量</string>
     <string name="setting_sync_client_volume_desc">自动把发送端音量用作接收端音量</string>
 
@@ -202,4 +202,5 @@
     <string name="debug_audio_glitch">异常：trim=%1$d drop=%2$d sil=%3$d ur=%4$d xrun=%5$d</string>
     <string name="debug_audio_decode">解码：%1$s</string>
     <string name="debug_clients">发送端：%1$d</string>
+    <string name="lc_mirror_retry_failed">电视视频解码器暂时无法启动，请断开屏幕镜像后重新连接。</string>
 </resources>

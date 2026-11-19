@@ -36,13 +36,16 @@ class DiagnosticActivity : Activity() {
         report?.let(Diagnostics::acknowledge)
         val recovery = Diagnostics.needsRecovery()
         val summary = getString(when (report?.code) {
+            "LC-AIRPLAY-LAST-RUN" -> R.string.lc_diag_stages
             "LC-NATIVE-LOAD" -> R.string.lc_diag_native
             "LC-START-INTERRUPTED" -> R.string.lc_diag_interrupted
             "LC-JAVA-CRASH" -> R.string.lc_diag_crash
             null -> R.string.lc_diag_empty
             else -> R.string.lc_diag_start
         })
-        val fullText = report?.text() ?: Diagnostics.device(this)
+        val liveTrace = Diagnostics.nativeTraceText()
+        val liveStages = if (liveTrace.isBlank()) "" else "\n\nAirPlay 当前运行阶段 / Current process stages\n$liveTrace"
+        val fullText = (report?.text() ?: Diagnostics.device(this)) + liveStages
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(36), dp(24), dp(36), dp(24))
@@ -82,7 +85,7 @@ class DiagnosticActivity : Activity() {
             "$summary\n\n${report.copy(detail = report.detail.lineSequence().take(2).joinToString("\n").take(400)).text()}"
         body.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
             if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
-                pages = paginate(overview) + if (report != null) paginate(report.detail) else emptyList()
+                pages = paginate(overview) + if (report != null) paginate(report.detail + liveStages) else emptyList()
                 render()
             }
         }

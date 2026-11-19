@@ -38,6 +38,13 @@ public:
         return n;
     }
 
+    // Flush is requested by the producer; only the consumer moves the read head.
+    size_t writePosition() const { return mWrite.load(std::memory_order_acquire); }
+    void discardThrough(size_t boundary) {
+        const size_t r = mRead.load(std::memory_order_relaxed);
+        if (boundary > r) mRead.store(boundary, std::memory_order_release);
+    }
+
     // consumer: pop up to n samples
     size_t read(int16_t *dst, size_t n) {
         const size_t r = mRead.load(std::memory_order_relaxed);
@@ -128,6 +135,11 @@ public:
     // reset clock base after discontinuity or clock shift/resync so it doesn't poison
     // jitter calculations; producer-thread only (same as observe())
     void reanchor() { mHaveBase = false; }
+    void reset() {
+        mHaveBase = false;
+        std::fill(std::begin(mHist), std::end(mHist), 0);
+        mTuned.store(mFloor, std::memory_order_relaxed);
+    }
 
     // latest tuned cushion in samples; any thread
     size_t target() const { return mTuned.load(std::memory_order_relaxed); }
@@ -258,8 +270,26 @@ public:
         mExpectedPtsNs = ptsNs + durNs;
     }
 
+    // Caller owns the producer (decoder drained/stopped). Preserve samples written
+    // after this boundary even when the output callback observes the flush later.
+    void requestFlush() {
+        mFlushThrough.store(mRing.writePosition(), std::memory_order_release);
+        mExpectedPtsNs = 0;
+        mTracker.reset();
+        mUnderran.store(false, std::memory_order_relaxed);
+    }
+
     // consumer: pop frames*channels samples into out, silence-padded on underrun
     void read(int16_t *out, int32_t frames) {
+        const size_t boundary = mFlushThrough.load(std::memory_order_acquire);
+        if (boundary != mAppliedFlush) {
+            mRing.discardThrough(boundary);
+            mAppliedFlush = boundary;
+            mPriming = true;
+            mPrimeSilenceFrames = 0;
+            mAboveCapSinceNs = 0;
+            mLastTrimBlockNs = 0;
+        }
         const size_t need = (size_t)frames * mChannels;
         const size_t tuned = mTracker.target();
         const int64_t now = monoNs();
@@ -374,6 +404,8 @@ private:
     const int mChannels;
     DelayTracker mTracker;               // owns cushion policy; read live each read()
     SpscRing mRing;
+    std::atomic<size_t> mFlushThrough{0};
+    size_t mAppliedFlush = 0; // consumer-only
     TimelineMetrics mMetrics;
     bool mPriming = true;                // stream start: buffer output to build cushion
     uint32_t mPrimeSilenceFrames = 0;    // consumer-only: silence frames output while priming with partial data

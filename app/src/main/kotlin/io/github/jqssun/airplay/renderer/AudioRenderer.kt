@@ -55,6 +55,7 @@ class AudioRenderer {
 
     private fun pushConfig() {
         if (serverHandle == 0L) return
+        val config = this.config.forDevice(android.os.Build.VERSION.SDK_INT)
         NativeBridge.nativeServerAudioConfigure(
             serverHandle, config.cushionMs, config.percentilePct, config.oboeBufferFrames,
             config.forceSwAlac, config.forceSwAac, config.realtimePriority, config.lowLatency,
