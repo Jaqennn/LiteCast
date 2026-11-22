@@ -45,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -63,6 +64,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -117,7 +119,14 @@ class PlayerActivity : ComponentActivity() {
 private enum class Mode { PIN, VIDEO, MIRROR, MUSIC, PREPARING, IDLE }
 
 @Composable
-private fun PlayerScreen(svc: AirPlayService?, pin: String?, onFinish: () -> Unit) {
+internal fun PlayerScreen(svc: AirPlayService?, pin: String?, onFinish: () -> Unit) {
+    // An unbound/replaced receiver owns a different session, including remembered
+    // playback, pending polls, surfaces and seek state.
+    key(svc) { PlayerSession(svc, pin, onFinish) }
+}
+
+@Composable
+private fun PlayerSession(svc: AirPlayService?, pin: String?, onFinish: () -> Unit) {
     val video = svc?.videoPlaybackActive.collectOr(false)
     val mirroring = svc?.mirroringActive.collectOr(false)
     val music = svc?.audioOnly.collectOr(false)
@@ -130,6 +139,7 @@ private fun PlayerScreen(svc: AirPlayService?, pin: String?, onFinish: () -> Uni
         while (true) { value = svc?.videoSessionPending() ?: false; delay(250) }
     }
     val mode = when {
+        svc == null -> Mode.IDLE
         pin != null -> Mode.PIN
         video -> Mode.VIDEO
         mirroring -> Mode.MIRROR
@@ -146,12 +156,13 @@ private fun PlayerScreen(svc: AirPlayService?, pin: String?, onFinish: () -> Uni
         onFinish()
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().background(Color.Black).testTag("player-${mode.name}"), contentAlignment = Alignment.Center) {
+        val receiver = svc ?: return@Box
         when (mode) {
             Mode.PIN -> PinView(pin.orEmpty())
-            Mode.VIDEO -> VideoView(svc!!, onFinish)
-            Mode.MIRROR -> MirrorView(svc!!, onFinish)
-            Mode.MUSIC -> MusicView(svc!!, onFinish)
+            Mode.VIDEO -> VideoView(receiver, onFinish)
+            Mode.MIRROR -> MirrorView(receiver, onFinish)
+            Mode.MUSIC -> MusicView(receiver, onFinish)
             Mode.PREPARING -> Waiting(stringResource(R.string.lc_player_preparing))
             Mode.IDLE -> Unit
         }

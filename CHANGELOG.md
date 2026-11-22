@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.5
+
+- Fixed the player crash when a receiver disconnects while Compose still holds an active playback flag. Receiver changes now replace the remembered session, nullable collectors reset immediately and media views require a live service.
+- Preserve an actual crash's ID and timestamp when adding native breadcrumbs, so retry/view acknowledgements survive later starts. Informational previous-process breadcrumbs remain available through Feedback and do not automatically open the diagnostic page.
+- Added frame-by-frame flow ownership checks, real video-player unbind/rebind regression and cross-process crash acknowledgement checks on API 21/22/23/31.
+
 ## 0.2.4
 
 - Default AirPlay and DLNA names are now simply “轻投”, without TV brand/model prefixes. Upgrade recognises old generated names and preserves custom names and receiver settings.

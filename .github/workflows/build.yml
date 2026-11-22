@@ -133,6 +133,8 @@ jobs:
             adb shell wm density 240
             adb shell am instrument -w -r -e class io.github.litecast.tv.RenameDialogTest io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee rename-dialog.txt
             grep -Eq '^OK \(3 tests\)' rename-dialog.txt
+            adb shell am instrument -w -r -e class io.github.litecast.tv.PlayerBindingTest io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee player-binding.txt
+            grep -Eq '^OK \(3 tests\)' player-binding.txt
             adb shell am instrument -w -r -e class io.github.litecast.LegacyStartupTest io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
             grep -Eq '^OK \(3 tests\)' instrumentation.txt
             adb exec-out run-as io.github.litecast cat files/diagnostic-preview.png > diagnostic-preview.png
@@ -141,6 +143,14 @@ jobs:
             adb shell am force-stop io.github.litecast
             adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#verifyCrashRecordAfterRestart io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee recovery-reload.txt
             grep -Eq '^OK \(1 test\)' recovery-reload.txt
+            adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#prepareCrashWithNativeTrail io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee recovery-enrich-save.txt
+            grep -Eq '^OK \(1 test\)' recovery-enrich-save.txt
+            adb shell am force-stop io.github.litecast
+            adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#verifyEnrichmentPreservesCrashIdentity io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee recovery-enrich-reload.txt
+            grep -Eq '^OK \(1 test\)' recovery-enrich-reload.txt
+            adb shell am force-stop io.github.litecast
+            adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#verifyRetryAndAcknowledgementAfterRestart io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee recovery-retry-reload.txt
+            grep -Eq '^OK \(1 test\)' recovery-retry-reload.txt
             adb shell am instrument -w -r -e recoveryTest true -e class io.github.litecast.DiagnosticRecoveryTest#prepareInterruptedStartup io.github.litecast.test/androidx.test.runner.AndroidJUnitRunner | tee interrupted-save.txt
             grep -Eq '^OK \(1 test\)' interrupted-save.txt
             adb shell am force-stop io.github.litecast
@@ -158,6 +168,7 @@ jobs:
           path: |
             instrumentation.txt
             rename-dialog.txt
+            player-binding.txt
             airplay-*.txt
             audio-*.txt
             native-stages-*.txt

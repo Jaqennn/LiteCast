@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -44,7 +45,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -164,8 +164,10 @@ fun KeyHints(hints: List<Pair<String, String>>, modifier: Modifier = Modifier) {
 /** Collects a flow from a service that may not be bound yet, with the same call shape either way. */
 @Composable
 fun <T> StateFlow<T>?.collectOr(default: T): T {
-    val flow = remember(this) { this ?: MutableStateFlow(default) }
-    return flow.collectAsState().value
+    val source = this ?: return default
+    // collectAsState retains its last value until a new producer runs. A different
+    // service/flow must start with its own current value in this composition frame.
+    return key(source) { source.collectAsState().value }
 }
 
 /** A settings row: title + description on the left, value on the right; OK toggles / opens. */

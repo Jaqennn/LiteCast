@@ -34,8 +34,10 @@ object Diagnostics {
             if (trail.isNotBlank()) {
                 val existing = current.value
                 val detail = "Last saved AirPlay stages. This is not a crash stack; a normal process termination can also leave this record.\n" + trail
-                if (existing?.recoveryRequired == true && preferences.getString("retry_id", null) != existing.id) {
-                    record(existing.code, existing.stage, existing.detail + "\n\n" + detail, true)
+                if (existing?.recoveryRequired == true) {
+                    // Extra breadcrumbs enrich the same failure; they must not create a
+                    // fresh crash ID/time or invalidate a previous acknowledgement.
+                    persist(existing.copy(detail = DiagnosticReport.redact(existing.detail + "\n\n" + detail)))
                 } else if (!trail.trimEnd().endsWith("server.destroy.done")) {
                     record("LC-AIRPLAY-LAST-RUN", "AirPlay previous process", detail)
                 }
@@ -81,10 +83,15 @@ object Diagnostics {
         val report = DiagnosticReport(UUID.randomUUID().toString().take(8), System.currentTimeMillis(), code,
             at, runCatching { device(app) }.getOrDefault("Device information unavailable"),
             DiagnosticReport.redact(detail), recovery)
+        return persist(report)
+    }
+
+    private fun persist(report: DiagnosticReport): DiagnosticReport {
         synchronized(lock) {
             runCatching {
-                val json = JSONObject().put("id", report.id).put("time", report.time).put("code", code)
-                    .put("stage", at).put("device", report.device).put("detail", report.detail).put("recovery", recovery)
+                val json = JSONObject().put("id", report.id).put("time", report.time).put("code", report.code)
+                    .put("stage", report.stage).put("device", report.device).put("detail", report.detail)
+                    .put("recovery", report.recoveryRequired)
                 val target = file
                 val stream = target.startWrite()
                 try {
@@ -104,7 +111,8 @@ object Diagnostics {
         it.recoveryRequired && preferences.getString("retry_id", null) != it.id
     } ?: false
 
-    fun needsAttention(report: DiagnosticReport): Boolean = preferences.getString("viewed_id", null) != report.id
+    fun needsAttention(report: DiagnosticReport): Boolean =
+        report.code != "LC-AIRPLAY-LAST-RUN" && preferences.getString("viewed_id", null) != report.id
     fun acknowledge(report: DiagnosticReport) { preferences.edit().putString("viewed_id", report.id).apply() }
     fun allowRetry() { current.value?.let { preferences.edit().putString("retry_id", it.id).commit() } }
 
