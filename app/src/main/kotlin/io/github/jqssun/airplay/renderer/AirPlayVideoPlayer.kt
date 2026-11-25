@@ -84,8 +84,9 @@ class AirPlayVideoPlayer(private val context: Context) {
             onTitle?.invoke(mediaMetadata.title?.toString())
         }
         override fun onVideoSizeChanged(videoSize: VideoSize) {
-            if (videoSize.height == 0) return
+            if (videoSize.width <= 0 || videoSize.height <= 0) return
             val width = (videoSize.width * videoSize.pixelWidthHeightRatio).toInt()
+            if (width <= 0) return
             onVideoSize?.invoke(width, videoSize.height, width.toFloat() / videoSize.height)
         }
     }
@@ -106,7 +107,7 @@ class AirPlayVideoPlayer(private val context: Context) {
         )
         val p = builder.build().also {
             it.addListener(_listener)
-            pendingSurface?.let { s -> it.setVideoSurface(s) }
+            pendingSurface?.takeIf { s -> s.isValid }?.let { s -> it.setVideoSurface(s) }
             it.volume = clientGain
         }
         player = p
@@ -116,7 +117,12 @@ class AirPlayVideoPlayer(private val context: Context) {
         options.liveTargetOffsetMs?.let {
             item.setLiveConfiguration(MediaItem.LiveConfiguration.Builder().setTargetOffsetMs(it).build())
         }
-        p.setMediaItem(item.build(), (startPositionSeconds * 1000).toLong())
+        if (startPositionSeconds > 0f && startPositionSeconds.isFinite()) {
+            p.setMediaItem(item.build(), (startPositionSeconds * 1000).toLong())
+        } else {
+            // C.TIME_UNSET: starts VOD at 0 and honors LiveConfiguration.targetOffsetMs for live streams
+            p.setMediaItem(item.build())
+        }
         p.playWhenReady = options.playWhenReady
         p.prepare()
         onPlaybackInfo?.invoke(PlaybackSnapshot(startPositionSeconds, 0f, 0f, false, options.playWhenReady))
@@ -173,14 +179,18 @@ class AirPlayVideoPlayer(private val context: Context) {
         p.seekTo(target)
     }
 
-    fun setSurface(surface: Surface) = mainHandler.post {
+    private fun _runOnMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block() else mainHandler.post(block)
+    }
+
+    fun setSurface(surface: Surface) = _runOnMain {
         pendingSurface = surface
         player?.setVideoSurface(surface)
     }
 
-    // no-op if a newer surface already replaced this one
-    fun clearSurface(surface: Surface) = mainHandler.post {
-        if (pendingSurface !== surface) return@post
+    // no-op if a newer surface already replaced this one; runs synchronously on main so surfaceDestroyed is honored
+    fun clearSurface(surface: Surface) = _runOnMain {
+        if (pendingSurface !== surface) return@_runOnMain
         pendingSurface = null
         player?.setVideoSurface(null)
     }

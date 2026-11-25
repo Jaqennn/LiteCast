@@ -25,7 +25,9 @@ import android.os.Looper
 import android.os.SystemClock
 import java.net.Inet4Address
 import java.net.InetAddress
+import java.util.Locale
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicInteger
 
 class DlnaRenderer(
@@ -42,6 +44,8 @@ class DlnaRenderer(
     private val main = Handler(Looper.getMainLooper())
     private val network = Executors.newSingleThreadExecutor()
     private val generation = AtomicInteger()
+    private val stateLock = Any()
+    private val refreshTask = Runnable { refreshNetwork() }
     private val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private var multicastLock: WifiManager.MulticastLock? = null
@@ -64,23 +68,25 @@ class DlnaRenderer(
         },
         clock = SystemClock::elapsedRealtime,
         log = log,
-        onChanged = { http?.publish() },
+        onChanged = { http?.publish(Dlna.AV) },
     )
 
     // ---------------------------------------------------------------- lifecycle
 
     fun start() {
-        if (started) return
-        started = true
-        setStatus(Status.STARTING)
+        synchronized(stateLock) {
+            if (started) return
+            started = true
+            setStatusLocked(Status.STARTING)
+        }
         runCatching {
-            val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            multicastLock = wifi.createMulticastLock("LiteCast.dlna").apply { setReferenceCounted(false); acquire() }
+            val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            multicastLock = wifi?.createMulticastLock("LiteCast.dlna")?.apply { setReferenceCounted(false); acquire() }
         }.onFailure { log("DLNA: multicast lock unavailable") }
         val cb = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) { main.postDelayed(::refreshNetwork, 500) }
-            override fun onLost(network: Network) { main.post(::refreshNetwork) }
-            override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) { main.post(::refreshNetwork) }
+            override fun onAvailable(network: Network) { main.postDelayed(refreshTask, 500) }
+            override fun onLost(network: Network) { main.post(refreshTask) }
+            override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) { main.post(refreshTask) }
         }
         callback = cb
         runCatching {
@@ -88,21 +94,24 @@ class DlnaRenderer(
                 NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(), cb
             )
         }
-        main.post(::refreshNetwork)
+        main.post(refreshTask)
     }
 
     fun stop() {
-        if (!started) return
-        started = false
-        generation.incrementAndGet()
+        synchronized(stateLock) {
+            if (!started) return
+            started = false
+            generation.incrementAndGet()
+            address = ""
+            setStatusLocked(Status.STOPPED)
+        }
+        main.removeCallbacks(refreshTask)
         transport.onInactive()
         callback?.let { runCatching { connectivity.unregisterNetworkCallback(it) } }
         callback = null
-        network.execute { closeServers() }
+        try { network.execute { closeServers() } } catch (_: RejectedExecutionException) {}
         runCatching { multicastLock?.takeIf { it.isHeld }?.release() }
         multicastLock = null
-        address = ""
-        setStatus(Status.STOPPED)
     }
 
     fun release() {
@@ -110,52 +119,75 @@ class DlnaRenderer(
         network.shutdown()
     }
 
-    private fun setStatus(value: Status) {
+    private fun setStatusLocked(value: Status) {
         if (status == value) return
         status = value
         main.post { onStatusChanged?.invoke(value) }
+    }
+
+    private fun setStatusIfCurrent(ticket: Int, value: Status) {
+        synchronized(stateLock) {
+            if (!started || ticket != generation.get()) return
+            setStatusLocked(value)
+        }
     }
 
     private fun refreshNetwork() {
         if (!started) return
         val candidate = lanAddress()
         val next = candidate?.hostAddress ?: ""
-        if (next == address && (next.isEmpty() || http != null)) return
-        address = next
-        val ticket = generation.incrementAndGet()
-        network.execute {
-            closeServers()
-            if (!started || ticket != generation.get()) return@execute
-            if (candidate == null) {
-                setStatus(Status.ERROR)
-                log("DLNA: no Wi-Fi or Ethernet address")
-                return@execute
-            }
-            var newHttp: HttpServer? = null
-            var newSsdp: SsdpServer? = null
-            try {
-                newHttp = try {
-                    HttpServer(candidate, PREFERRED_PORT, uuid, friendlyName, version, this, log)
-                } catch (busy: java.io.IOException) {
-                    HttpServer(candidate, 0, uuid, friendlyName, version, this, log)
-                }
-                newSsdp = SsdpServer(candidate, uuid, newHttp.base() + "/description.xml", log)
-                if (!started || ticket != generation.get()) {
-                    newSsdp.close(); newHttp.close(); return@execute
-                }
-                http = newHttp
-                ssdp = newSsdp
-                newHttp.start()
-                newSsdp.start()
-                setStatus(Status.READY)
-                log("DLNA ready on ${newHttp.base()}" + if (newSsdp.isListening) "" else " (announce-only)")
-            } catch (e: Exception) {
-                newSsdp?.close()
-                newHttp?.close()
-                setStatus(Status.ERROR)
-                log("DLNA start failed: ${e.javaClass.simpleName}")
-            }
+        if (next == address && (if (next.isEmpty()) status == Status.ERROR else http != null)) return
+        val ticket = synchronized(stateLock) {
+            if (!started) return
+            address = next
+            generation.incrementAndGet()
         }
+        try {
+            network.execute {
+                closeServers()
+                if (!started || ticket != generation.get()) return@execute
+                if (candidate == null) {
+                    setStatusIfCurrent(ticket, Status.ERROR)
+                    log("DLNA: no Wi-Fi or Ethernet address")
+                    return@execute
+                }
+                var newHttp: HttpServer? = null
+                var newSsdp: SsdpServer? = null
+                try {
+                    newHttp = try {
+                        HttpServer(candidate, PREFERRED_PORT, uuid, friendlyName, version, this, log)
+                    } catch (busy: java.io.IOException) {
+                        HttpServer(candidate, 0, uuid, friendlyName, version, this, log)
+                    }
+                    newSsdp = SsdpServer(candidate, uuid, newHttp.base() + "/description.xml", log)
+                    val commit = synchronized(stateLock) {
+                        if (!started || ticket != generation.get()) false
+                        else {
+                            http = newHttp
+                            ssdp = newSsdp
+                            true
+                        }
+                    }
+                    if (!commit) {
+                        newSsdp.close(); newHttp.close(); return@execute
+                    }
+                    newHttp.start()
+                    newSsdp.start()
+                    setStatusIfCurrent(ticket, Status.READY)
+                    log("DLNA ready on ${newHttp.base()}" + if (newSsdp.isListening) "" else " (announce-only)")
+                } catch (e: Exception) {
+                    newSsdp?.close()
+                    newHttp?.close()
+                    synchronized(stateLock) {
+                        if (started && ticket == generation.get()) {
+                            address = ""
+                            setStatusLocked(Status.ERROR)
+                        }
+                    }
+                    log("DLNA start failed: ${e.javaClass.simpleName}")
+                }
+            }
+        } catch (_: RejectedExecutionException) {}
     }
 
     private fun closeServers() {
@@ -215,7 +247,7 @@ class DlnaRenderer(
             }
             "GetMute" -> return Dlna.values("CurrentMute", if (isMuted()) "1" else "0")
             "SetMute" -> {
-                val mute = args["DesiredMute"]?.trim()?.lowercase()
+                val mute = args["DesiredMute"]?.trim()?.lowercase(Locale.ROOT)
                 if (mute !in setOf("0", "1", "true", "false", "yes", "no")) throw Dlna.Fault(402, "Invalid mute value")
                 val on = mute == "1" || mute == "true" || mute == "yes"
                 if (Build.VERSION.SDK_INT >= 23) {

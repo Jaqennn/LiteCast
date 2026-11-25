@@ -23,7 +23,7 @@ class DlnaProtocolTest {
         assertEquals(62_500L, Dlna.millis("0:01:02.500"))
         assertEquals(62_000L, Dlna.millis("1:02"))
         assertEquals(62_500L, Dlna.millis("62.5"))
-        for (bad in listOf("", "abc", "-1", "1:2:3:4")) {
+        for (bad in listOf("", "abc", "-1", "1:2:3:4", "01:02:", "10::", "01:-30:00", "-1:00")) {
             try {
                 Dlna.millis(bad)
                 fail("expected fault for '$bad'")
@@ -124,6 +124,39 @@ class DlnaProtocolTest {
         assertEquals(MediaProbe.HLS, MediaProbe.mime("application/vnd.apple.mpegurl; charset=utf-8"))
         assertEquals(MediaProbe.HLS, MediaProbe.initialMime("http://a/b/index.m3u8?t=1", "video/mp4"))
         assertEquals("video/mp4", MediaProbe.initialMime("http://a/b/play", "video/mp4"))
+        // 60-byte ftyp box (0x3C == '<') and moof boxes with 0x5B ('[') / 0x7B ('{') must not be misread as XML/JSON
+        val mp4Box60 = byteArrayOf(0, 0, 0, 0x3C) + "ftypisom".toByteArray()
+        assertEquals("video/mp4", MediaProbe.inspect(mp4Box60, "", "").mime())
+        val fmp4Bracket = byteArrayOf(0, 0, 0x5B, 0x10) + "moof".toByteArray()
+        assertEquals("video/mp4", MediaProbe.inspect(fmp4Bracket, "", "").mime())
+        val fmp4Brace = byteArrayOf(0, 0, 0x7B, 0x10) + "moof".toByteArray()
+        assertEquals("video/mp4", MediaProbe.inspect(fmp4Brace, "", "").mime())
+    }
+
+    @Test
+    fun chunkedOverflowAndDeepXmlAreRejected() {
+        val overflow = ("POST /control/AVTransport HTTP/1.1\r\nHost: tv\r\nTransfer-Encoding: chunked\r\n\r\n" +
+            "1\r\na\r\n7fffffff\r\n").toByteArray(Charsets.US_ASCII)
+        try {
+            HttpServer.read(ByteArrayInputStream(overflow), InetAddress.getLoopbackAddress())
+            fail("chunked integer overflow must be rejected")
+        } catch (_: java.io.IOException) {
+            // expected
+        }
+        val nested = "<a>".repeat(64) + "</a>".repeat(64)
+        try {
+            Xml.parse(nested)
+            fail("deeply nested XML must be rejected")
+        } catch (_: IllegalArgumentException) {
+            // expected
+        }
+        assertEquals("ab", Xml.escape("a\u0000\u0007b"))
+        val multiRes = "<DIDL-Lite xmlns=\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\"><item>" +
+            "<res protocolInfo=\"http-get:*:image/jpeg:*\">http://a/thumb.jpg</res>" +
+            "<res protocolInfo=\"http-get:*:video/mp4:*\">http://a/movie.mp4</res>" +
+            "</item></DIDL-Lite>"
+        assertEquals("video/mp4", Xml.resourceMime(multiRes, "http://a/movie.mp4"))
+        assertEquals("video/mp4", Xml.resourceMime(multiRes))
     }
 
     @Test

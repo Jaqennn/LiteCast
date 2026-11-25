@@ -15,6 +15,7 @@
 package io.github.litecast.dlna
 
 import java.net.URI
+import java.util.Locale
 
 class AvTransport(
     private val host: Host,
@@ -65,32 +66,42 @@ class AvTransport(
     private var transportStatus = "OK"
     private var loadedAt = 0L
     private var initialSeekFiltered = false
+    private var loadId = 0L
+    private var autoPlayArmed = false
     @Volatile private var snapshot = Snapshot()
     private var lastPublishedState = ""
     private val autoPlay = Runnable { onAutoPlay() }
 
+    /** Monotonic token for the current load; callers pass it back so stale callbacks are ignored. */
+    fun currentLoadId(): Long = synchronized(lock) { loadId }
+
     // ---------------------------------------------------------------- service callbacks
 
-    fun onSnapshot(value: Snapshot) {
-        snapshot = value
+    fun onSnapshot(value: Snapshot, loadId: Long = -1L) {
         synchronized(lock) {
+            if (loadId >= 0L && loadId != this.loadId) return
+            snapshot = value
             if (active && value.ready && !everReady) everReady = true
             if (transportState() != lastPublishedState) changed()
         }
     }
 
     /** Playback finished naturally, was stopped on the TV, or was taken over by another cast. */
-    fun onInactive() = synchronized(lock) {
+    fun onInactive(loadId: Long = -1L) = synchronized(lock) {
+        if (loadId >= 0L && loadId != this.loadId) return@synchronized
         if (!active) return@synchronized
         active = false
         desiredPlay = false
+        autoPlayArmed = false
         scheduler.cancel(autoPlay)
         changed()
     }
 
-    fun onError() = synchronized(lock) {
+    fun onError(loadId: Long = -1L) = synchronized(lock) {
+        if (loadId >= 0L && loadId != this.loadId) return@synchronized
         active = false
         desiredPlay = false
+        autoPlayArmed = false
         transportStatus = "ERROR_OCCURRED"
         scheduler.cancel(autoPlay)
         changed()
@@ -104,19 +115,22 @@ class AvTransport(
             "SetNextAVTransportURI" -> Unit // playlists are not supported; accept so senders keep going
             "Play" -> {
                 if (currentUri.isEmpty()) throw Dlna.Fault(701, "No media")
+                autoPlayArmed = false
                 scheduler.cancel(autoPlay)
                 desiredPlay = true
                 if (!active) beginLoad(autoPlay = true) else host.dlnaSetPlaying(true)
                 val speed = parseSpeed(args["Speed"])
-                if (speed != 1f && !snapshot.live) host.dlnaSetSpeed(speed)
+                if (!snapshot.live && (speed != 1f || snapshot.speed != 1f)) host.dlnaSetSpeed(speed)
             }
             "Pause" -> {
                 if (currentUri.isEmpty()) throw Dlna.Fault(701, "No media")
+                autoPlayArmed = false
                 scheduler.cancel(autoPlay)
                 desiredPlay = false
                 if (active) host.dlnaSetPlaying(false)
             }
             "Stop" -> {
+                autoPlayArmed = false
                 scheduler.cancel(autoPlay)
                 desiredPlay = false
                 if (active) {
@@ -185,6 +199,7 @@ class AvTransport(
 
     private fun setUri(uri: String, meta: String) {
         if (uri.isEmpty()) {
+            autoPlayArmed = false
             scheduler.cancel(autoPlay)
             if (active) host.dlnaStop()
             active = false
@@ -193,7 +208,10 @@ class AvTransport(
             return
         }
         val parsed = runCatching { URI(uri) }.getOrNull()
-        if (parsed == null || parsed.scheme?.lowercase() !in setOf("http", "https") || parsed.host.isNullOrEmpty() || parsed.userInfo != null) {
+        val scheme = parsed?.scheme?.lowercase(Locale.ROOT)
+        if (parsed == null || scheme !in setOf("http", "https") || parsed.host.isNullOrEmpty() || parsed.userInfo != null ||
+            MediaProbe.isLoopbackOrUnspecifiedHost(parsed.host)
+        ) {
             throw Dlna.Fault(714, "Only HTTP(S) media supported")
         }
         val newTitle = Xml.first(meta, "title").trim()
@@ -207,18 +225,19 @@ class AvTransport(
         currentUri = uri
         metadata = meta
         title = newTitle
-        val declared = MediaProbe.mime(Xml.resourceMime(meta))
+        val declared = MediaProbe.mime(Xml.resourceMime(meta, uri))
         mime = MediaProbe.initialMime(uri, declared)
         desiredPlay = false
         log("DLNA: received media from ${parsed.host}" + if (declared.isEmpty()) "" else " ($declared)")
         // Preload paused so Play starts instantly; senders that never send Play get auto-play.
         beginLoad(autoPlay = false)
+        autoPlayArmed = true
         scheduler.cancel(autoPlay)
         scheduler.schedule(AUTO_PLAY_GRACE_MS, autoPlay)
     }
 
     private fun seek(args: Map<String, String>) {
-        val unit = args["Unit"]?.trim()?.uppercase().orEmpty()
+        val unit = args["Unit"]?.trim()?.uppercase(Locale.ROOT).orEmpty()
         if (unit != "REL_TIME" && unit != "ABS_TIME") throw Dlna.Fault(710, "Seek mode not supported")
         val target = Dlna.millis(args["Target"].orEmpty())
         val sinceLoad = clock() - loadedAt
@@ -234,6 +253,7 @@ class AvTransport(
 
     /** Marks our URI as owning the player before the (asynchronous) load is posted. */
     private fun beginLoad(autoPlay: Boolean) {
+        loadId++
         active = true
         everReady = false
         snapshot = Snapshot()
@@ -244,7 +264,8 @@ class AvTransport(
     }
 
     private fun onAutoPlay() = synchronized(lock) {
-        if (currentUri.isEmpty() || desiredPlay) return@synchronized
+        if (!autoPlayArmed || currentUri.isEmpty() || desiredPlay) return@synchronized
+        autoPlayArmed = false
         desiredPlay = true
         if (active) host.dlnaSetPlaying(true) else beginLoad(autoPlay = true)
         log("DLNA: no Play received, starting playback")

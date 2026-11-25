@@ -57,21 +57,23 @@ public final class MediaProbe {
     }
 
     public static Format inspect(byte[] bytes, String responseType, String finalUri) {
-        String prefix = new String(bytes, StandardCharsets.UTF_8);
-        if (prefix.startsWith("\uFEFF")) prefix = prefix.substring(1);
-        prefix = prefix.trim();
-        String lower = prefix.toLowerCase(Locale.US);
-        if (prefix.startsWith("#EXTM3U")) return new Format("HLS", HLS);
-        if (lower.startsWith("<!doctype html") || lower.startsWith("<html") || lower.startsWith("<head") || lower.startsWith("<body")) return new Format("HTML", "");
-        if (prefix.startsWith("{") || prefix.startsWith("[")) return new Format("JSON", "");
-        if (MPD.matcher(prefix).find()) return new Format("DASH", DASH);
-        if (prefix.startsWith("<?xml") || prefix.startsWith("<")) return new Format("XML", "");
+        // Check binary container signatures first: String.trim() strips NUL (0x00) bytes,
+        // which would otherwise misclassify MP4 boxes whose size byte is 0x3C ('<'), 0x5B ('['), or 0x7B ('{').
         if (bytes.length >= 8) {
             String box = new String(bytes, 4, 4, StandardCharsets.US_ASCII);
             if (box.equals("ftyp") || box.equals("styp") || box.equals("moof")) return new Format("MP4", "video/mp4");
         }
         if (bytes.length >= 3 && bytes[0] == 'F' && bytes[1] == 'L' && bytes[2] == 'V') return new Format("FLV", "video/x-flv");
         if (bytes.length > 188 && (bytes[0] & 255) == 0x47 && (bytes[188] & 255) == 0x47) return new Format("MPEG-TS", "video/mp2t");
+        String prefix = new String(bytes, StandardCharsets.UTF_8);
+        if (prefix.startsWith("\uFEFF")) prefix = prefix.substring(1);
+        prefix = trimTextWhitespace(prefix);
+        String lower = prefix.toLowerCase(Locale.US);
+        if (prefix.startsWith("#EXTM3U")) return new Format("HLS", HLS);
+        if (lower.startsWith("<!doctype html") || lower.startsWith("<html") || lower.startsWith("<head") || lower.startsWith("<body")) return new Format("HTML", "");
+        if (prefix.startsWith("{") || prefix.startsWith("[")) return new Format("JSON", "");
+        if (MPD.matcher(prefix).find()) return new Format("DASH", DASH);
+        if (prefix.startsWith("<?xml") || prefix.startsWith("<")) return new Format("XML", "");
         String type = mime(responseType);
         if (type.equals("text/html")) return new Format("HTML", "");
         if (type.equals("application/json") || type.endsWith("+json")) return new Format("JSON", "");
@@ -82,6 +84,33 @@ public final class MediaProbe {
         return new Format("UNKNOWN", "");
     }
 
+    private static String trimTextWhitespace(String value) {
+        int start = 0, end = value.length();
+        while (start < end && isTextWhitespace(value.charAt(start))) start++;
+        while (end > start && isTextWhitespace(value.charAt(end - 1))) end--;
+        return value.substring(start, end);
+    }
+
+    private static boolean isTextWhitespace(char c) {
+        return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+    }
+
+    public static boolean isLoopbackOrUnspecifiedHost(String rawHost) {
+        if (rawHost == null) return true;
+        String host = rawHost.trim().toLowerCase(Locale.ROOT);
+        if (host.startsWith("[") && host.endsWith("]")) host = host.substring(1, host.length() - 1);
+        while (host.endsWith(".")) host = host.substring(0, host.length() - 1);
+        if (host.isEmpty() || host.equals("localhost") || host.endsWith(".localhost")) return true;
+        if (host.startsWith("127.") || host.equals("0.0.0.0") || host.startsWith("0.")) return true;
+        String v6 = host.contains("%") ? host.substring(0, host.indexOf('%')) : host;
+        if (v6.equals("::1") || v6.equals("::")) return true;
+        if (v6.startsWith("::ffff:")) {
+            String mapped = v6.substring(7);
+            if (mapped.startsWith("127.") || mapped.startsWith("0.") || mapped.startsWith("7f") || mapped.equals("0:0")) return true;
+        }
+        return false;
+    }
+
     public static Result fetch(String original) throws IOException {
         URL next = new URL(original);
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
@@ -90,7 +119,11 @@ public final class MediaProbe {
             if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException();
             int timeout = (int) Math.min(6000, TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime()));
             if (timeout <= 0) throw new SocketTimeoutException("Format probe timeout");
-            if (!(next.getProtocol().equals("http") || next.getProtocol().equals("https")) || next.getUserInfo() != null) throw new IOException("Unsupported redirect scheme");
+            if (!(next.getProtocol().equals("http") || next.getProtocol().equals("https"))
+                    || next.getUserInfo() != null
+                    || isLoopbackOrUnspecifiedHost(next.getHost())) {
+                throw new IOException("Unsupported redirect scheme or host");
+            }
             HttpURLConnection connection = (HttpURLConnection) next.openConnection();
             connection.setInstanceFollowRedirects(false);
             connection.setUseCaches(false);

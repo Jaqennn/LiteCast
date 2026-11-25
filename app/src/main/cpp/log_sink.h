@@ -16,10 +16,15 @@ class LogSink {
 public:
     // bind to Kotlin handler with `void onLog(String)` (bridge.LogListener)
     void bind(JNIEnv *env, jobject handler) {
+        if (!env || !handler) return;
         env->GetJavaVM(&mVm);
         mObj = env->NewGlobalRef(handler);
         jclass cls = env->GetObjectClass(handler);
         mMethod = cls ? env->GetMethodID(cls, "onLog", "(Ljava/lang/String;)V") : nullptr;
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            mMethod = nullptr;
+        }
         if (cls) env->DeleteLocalRef(cls);
     }
 
@@ -28,9 +33,12 @@ public:
         if (!mVm || !mObj) return;
         JNIEnv *env = nullptr;
         bool attached = false;
-        if (mVm->GetEnv((void **)&env, JNI_VERSION_1_6) == JNI_EDETACHED) {
+        jint st = mVm->GetEnv((void **)&env, JNI_VERSION_1_6);
+        if (st == JNI_EDETACHED) {
             if (mVm->AttachCurrentThread(&env, nullptr) != JNI_OK) return;
             attached = true;
+        } else if (st != JNI_OK || !env) {
+            return;
         }
         env->DeleteGlobalRef(mObj);
         if (attached) mVm->DetachCurrentThread();
@@ -56,14 +64,23 @@ private:
 
         JNIEnv *env = nullptr;
         bool attached = false;
-        if (mVm->GetEnv((void **)&env, JNI_VERSION_1_6) == JNI_EDETACHED) {
+        jint st = mVm->GetEnv((void **)&env, JNI_VERSION_1_6);
+        if (st == JNI_EDETACHED) {
             if (mVm->AttachCurrentThread(&env, nullptr) != JNI_OK) return;
             attached = true;
+        } else if (st != JNI_OK || !env) {
+            return;
+        }
+        if (env->ExceptionCheck()) {
+            if (attached) mVm->DetachCurrentThread();
+            return;
         }
         jstring s = env->NewStringUTF(buf);
-        env->CallVoidMethod(mObj, mMethod, s);
+        if (s) {
+            env->CallVoidMethod(mObj, mMethod, s);
+            env->DeleteLocalRef(s);
+        }
         if (env->ExceptionCheck()) { env->ExceptionDescribe(); env->ExceptionClear(); }
-        env->DeleteLocalRef(s);
         if (attached) mVm->DetachCurrentThread();
     }
 

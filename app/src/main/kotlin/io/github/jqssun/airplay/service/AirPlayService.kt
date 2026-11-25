@@ -73,6 +73,7 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.debounce
@@ -241,7 +242,7 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
     var logCallback: ((String) -> Unit)? = null
 
     @Volatile private var _lastPin: String? = null
-    var pinCallback: ((String?) -> Unit)? = null
+    @Volatile var pinCallback: ((String?) -> Unit)? = null
         set(value) {
             field = value
             value?.invoke(_lastPin)
@@ -348,7 +349,9 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
                 if (idx < 0 || prev < 0 || idx == prev) return
                 if (_pendingServerVolEchoes > 0) { _pendingServerVolEchoes--; return }
                 if (!_syncClientVol || _connectionCount.value == 0) return
-                val target = idx.toFloat() / _serverVolMax()
+                val max = _serverVolMax()
+                if (max <= 0) return
+                val target = idx.toFloat() / max
                 Log.d(TAG, "receiver volume $prev -> $idx, sync sender to $target")
                 _serverPreZeroIdx = -1
                 _driveClientVol(target, if (idx > prev) 1 else -1)
@@ -419,16 +422,17 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
             (intent == null && prefs.getBoolean(LiteCast.PREF_RECEIVER_ENABLED, true))) {
             // Android 12+ can refuse a foreground start after a sticky restart; give up quietly
             // instead of crash-looping (the receiver comes back when the app or the TV starts)
+            val isStickyRestart = intent == null
             try {
                 promoteToForeground()
             } catch (e: IllegalStateException) {
                 log("Foreground start refused: ${e.message}")
-                Diagnostics.record("LC-SERVICE-START", "foreground service", e)
+                if (!isStickyRestart) Diagnostics.record("LC-SERVICE-START", "foreground service", e)
                 stopSelf(startId)
                 return START_NOT_STICKY
             } catch (e: SecurityException) {
                 log("Foreground start refused: ${e.message}")
-                Diagnostics.record("LC-SERVICE-START", "foreground service", e)
+                if (!isStickyRestart) Diagnostics.record("LC-SERVICE-START", "foreground service", e)
                 stopSelf(startId)
                 return START_NOT_STICKY
             }
@@ -466,10 +470,30 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
         }
     }
 
+    private fun _promoteReceiverToForeground(ensureServiceStarted: Boolean): Boolean {
+        return try {
+            if (ensureServiceStarted) {
+                ContextCompat.startForegroundService(this, Intent(this, AirPlayService::class.java))
+            }
+            promoteToForeground()
+            true
+        } catch (e: IllegalStateException) {
+            log("Foreground start refused: ${e.message}")
+            false
+        } catch (e: SecurityException) {
+            log("Foreground start refused: ${e.message}")
+            false
+        }
+    }
+
     private fun _startServer(ensureServiceStarted: Boolean) {
         if (isReceiverActive || Diagnostics.needsRecovery()) return
         if (!hasLocalNetwork()) {
             _serverState.value = ServerState.ERROR
+            if (foregroundStarted) {
+                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                foregroundStarted = false
+            }
             Diagnostics.record("LC-NETWORK-PERMISSION", "receiver startup", "Local network permission denied")
             return
         }
@@ -490,10 +514,7 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
             Diagnostics.endStartup()
         }
         if (isReceiverActive) {
-            if (ensureServiceStarted) {
-                ContextCompat.startForegroundService(this, Intent(this, AirPlayService::class.java))
-            }
-            promoteToForeground()
+            _promoteReceiverToForeground(ensureServiceStarted)
         } else {
             wakeLock?.takeIf { it.isHeld }?.release()
             wakeLock = null
@@ -699,6 +720,10 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
         wakeLock?.takeIf { it.isHeld }?.release()
         wakeLock = null
         videoRenderer.release()
+        _mainHandler.removeCallbacks(_dlnaFailEnd)
+        _mainHandler.removeCallbacks(_airplayFailEnd)
+        _mainHandler.removeCallbacks(_slowStart)
+        clearPin()
         airPlayVideoPlayer.stop()
         mediaSession?.isActive = false
         _audioOnly.value = false
@@ -814,6 +839,11 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
     }
 
     override fun onVideoPlay(location: String, startPositionSeconds: Float) {
+        _mainHandler.post { _startAirPlayVideo(location, startPositionSeconds) }
+    }
+
+    private fun _startAirPlayVideo(location: String, startPositionSeconds: Float) {
+        clearPin()
         // LiteCast: newest cast wins; a running DLNA video is told it was stopped
         if (_videoSource.value == VideoSource.DLNA) _releaseDlnaSession()
         _videoSource.value = VideoSource.AIRPLAY
@@ -835,17 +865,34 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
     }
 
     override fun onVideoScrub(positionSeconds: Float) {
-        airPlayVideoPlayer.scrub(positionSeconds)
+        _mainHandler.post {
+            if (_videoSource.value == VideoSource.AIRPLAY && _videoPlaybackActive.value) {
+                airPlayVideoPlayer.scrub(positionSeconds)
+            }
+        }
     }
 
     override fun onVideoRate(rate: Float) {
-        airPlayVideoPlayer.setRate(rate)
+        _mainHandler.post {
+            if (_videoSource.value == VideoSource.AIRPLAY && _videoPlaybackActive.value) {
+                airPlayVideoPlayer.setRate(rate)
+            }
+        }
     }
 
-    override fun onVideoStop() = _endVideoPlayback("AirPlay Video stopped")
+    override fun onVideoStop() {
+        _mainHandler.post {
+            if (_videoSource.value == VideoSource.AIRPLAY) _endVideoPlayback("AirPlay Video stopped")
+        }
+    }
 
     override fun onAudioFormat(ct: Int, spf: Int, usingScreen: Boolean) {
         clearPin()
+        if (!usingScreen) {
+            _mainHandler.post {
+                if (_videoPlaybackActive.value) _endVideoPlayback("Video stopped: AirPlay audio started")
+            }
+        }
         audioRenderer.start()
         audioRenderer.setFormat(ct, spf)
         if (!usingScreen) _setPlaying(true)
@@ -925,7 +972,10 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
 
     private fun _serverVolMax() = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
     private fun _serverVolIdx(frac: Float) = (frac * _serverVolMax()).roundToInt()
-    private fun _serverVolFrac() = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / _serverVolMax()
+    private fun _serverVolFrac(): Float {
+        val max = _serverVolMax()
+        return if (max <= 0) 1f else audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max
+    }
 
     private fun _driveClientVol(target: Float, hint: Int) {
         val active = _clientVolTarget >= 0f
@@ -965,18 +1015,21 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
     }
 
     override fun onConnectionInit() {
-        val firstConnection = _connectionCount.value == 0
-        _connectionCount.value++
-        log("Sender connected (${_connectionCount.value})")
+        val count = _connectionCount.updateAndGet { it + 1 }
+        log("Sender connected ($count)")
         // LiteCast: senders probe /info when the AirPlay list opens; only real sessions pop the UI
-        if (firstConnection) log("Sender probing")
+        if (count == 1) log("Sender probing")
     }
 
     override fun onConnectionDestroy() {
-        _connectionCount.value = (_connectionCount.value - 1).coerceAtLeast(0)
-        if (_connectionCount.value == 0) {
+        val count = _connectionCount.updateAndGet { (it - 1).coerceAtLeast(0) }
+        if (count == 0) {
+            clearPin()
             // clients may drop without POST /stop; must run before the poll-state reset
-            if (_videoSource.value == VideoSource.AIRPLAY) _endVideoPlayback("AirPlay Video stopped (disconnect)")
+            _mainHandler.post {
+                if (_videoSource.value == VideoSource.AIRPLAY) _endVideoPlayback("AirPlay Video stopped (disconnect)")
+                if (!_videoPlaybackActive.value) mediaSession?.isActive = false
+            }
             // last client gone: release audio output devices to save power
             audioRenderer.stop()
             _audioOnly.value = false
@@ -996,11 +1049,10 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
                 }
                 _applyClientVol()
             }
-            mediaSession?.isActive = false
             _refreshDacpPlayer()
             _updateMediaNotification()
         }
-        log("Sender disconnected (${_connectionCount.value})")
+        log("Sender disconnected ($count)")
     }
 
     override fun onConnectionReset(reason: Int) {
@@ -1109,16 +1161,17 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
     }
 
     private fun _setPlaying(playing: Boolean) {
+        if (!playing) {
+            // capture extrapolated position before flipping _playing to false
+            _positionMs.value = currentPositionMs()
+            _progressBaseTime = 0
+        }
         _playing.value = playing
         _refreshDacpPlayer()
         if (playing) {
             // resume extrapolation from current position
             _progressBaseMs = _positionMs.value
             _progressBaseTime = SystemClock.elapsedRealtime()
-        } else {
-            // freeze position
-            _positionMs.value = currentPositionMs()
-            _progressBaseTime = 0
         }
         _updatePlaybackState()
     }
@@ -1197,7 +1250,9 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
         droppedFrames = videoRenderer.droppedFrames,
         framePacingJitterUs = videoRenderer.framePacingJitterUs,
         audioCodec = audioRenderer.codecLabel,
-        serverVolume = 100 * audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) / _serverVolMax(),
+        serverVolume = _serverVolMax().let { max ->
+            if (max <= 0) 0 else 100 * audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) / max
+        },
         clientVolume = (100 * clientVolume()).roundToInt(),
         audio = audioRenderer.audioDebug(),
         connections = _connectionCount.value,
@@ -1217,13 +1272,12 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
         if (!enabled) {
             if (_isDlnaActive()) _endVideoPlayback("DLNA turned off")
             _stopDlna()
-        } else if (prefs.getBoolean(LiteCast.PREF_RECEIVER_ENABLED, true)) {
+        } else if (prefs.getBoolean(LiteCast.PREF_RECEIVER_ENABLED, true) && hasLocalNetwork()) {
             _tryStartDlna(prefs[Prefs.SERVER_NAME])
         }
         if (isReceiverActive && !foregroundStarted) {
             _ensureReceiverWakeLock()
-            ContextCompat.startForegroundService(this, Intent(this, AirPlayService::class.java))
-            promoteToForeground()
+            _promoteReceiverToForeground(ensureServiceStarted = true)
         } else if (!isReceiverActive && foregroundStarted) {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             foregroundStarted = false
@@ -1257,15 +1311,23 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
 
     private fun _isDlnaActive() = _videoPlaybackActive.value && _videoSource.value == VideoSource.DLNA
 
+    private var _dlnaLoadId = -1L
+
     private val _dlnaHost = object : AvTransport.Host {
         override fun dlnaLoad(uri: String, title: String, mime: String, autoPlay: Boolean) {
-            _mainHandler.post { _startDlnaPlayback(uri, title, mime, autoPlay) }
+            val loadId = dlnaRenderer?.transport?.currentLoadId() ?: -1L
+            _mainHandler.post { _startDlnaPlayback(uri, title, mime, autoPlay, loadId) }
         }
         override fun dlnaSetPlaying(playing: Boolean) {
             _mainHandler.post { if (_isDlnaActive()) airPlayVideoPlayer.setPlaying(playing) }
         }
         override fun dlnaStop() {
-            _mainHandler.post { if (_isDlnaActive()) _endVideoPlayback("DLNA stopped by sender") }
+            val loadId = dlnaRenderer?.transport?.currentLoadId() ?: -1L
+            _mainHandler.post {
+                if (_isDlnaActive() && (loadId < 0L || loadId == _dlnaLoadId)) {
+                    _endVideoPlayback("DLNA stopped by sender")
+                }
+            }
         }
         override fun dlnaSeek(positionMs: Long) {
             _mainHandler.post { if (_isDlnaActive()) airPlayVideoPlayer.scrub(positionMs / 1000f) }
@@ -1283,10 +1345,12 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
         playWhenReady = playWhenReady,
     )
 
-    private fun _startDlnaPlayback(uri: String, title: String, mime: String, autoPlay: Boolean) {
+    private fun _startDlnaPlayback(uri: String, title: String, mime: String, autoPlay: Boolean, loadId: Long = -1L) {
         _mainHandler.removeCallbacks(_dlnaRetry)
         _mainHandler.removeCallbacks(_dlnaFailEnd)
-        if (_mirroringActive.value) disconnectClients() // newest cast wins
+        clearPin()
+        if (_connectionCount.value > 0) disconnectClients() // newest cast wins (mirroring, music, or AirPlay video)
+        _dlnaLoadId = loadId
         _dlnaUri = uri
         _dlnaTitle = title
         _dlnaMime = mime
@@ -1331,7 +1395,8 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
                 live = snapshot.live,
                 seekable = snapshot.seekable,
                 speed = snapshot.speed,
-            )
+            ),
+            _dlnaLoadId,
         )
     }
 
@@ -1339,8 +1404,9 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
 
     private fun _releaseDlnaSession() {
         _mainHandler.removeCallbacks(_dlnaRetry)
+        _mainHandler.removeCallbacks(_dlnaFailEnd)
         _dlnaFailing = false
-        dlnaRenderer?.transport?.onInactive()
+        dlnaRenderer?.transport?.onInactive(_dlnaLoadId)
     }
 
     private fun _armSlowStart() {
@@ -1430,7 +1496,7 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
         _dlnaFailing = true
         _videoErrorFatal.value = true
         _videoError.value = message
-        dlnaRenderer?.transport?.onError()
+        dlnaRenderer?.transport?.onError(_dlnaLoadId)
         _mainHandler.removeCallbacks(_dlnaFailEnd)
         _mainHandler.postDelayed(_dlnaFailEnd, DLNA_ERROR_LINGER_MS)
     }

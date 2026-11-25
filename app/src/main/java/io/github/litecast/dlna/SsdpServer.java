@@ -40,13 +40,14 @@ public final class SsdpServer implements AutoCloseable {
         group = InetAddress.getByName(GROUP);
         NetworkInterface net = NetworkInterface.getByInetAddress(address);
         if (net == null) throw new IOException("No LAN interface");
-        MulticastSocket bound;
+        MulticastSocket bound = null;
         boolean canListen = true;
         try {
             bound = new MulticastSocket(null);
             bound.setReuseAddress(true);
             bound.bind(new InetSocketAddress(1900));
         } catch (IOException busy) {
+            if (bound != null) bound.close();
             // Another app holds 1900 without SO_REUSEADDR: we can still announce, just not answer searches.
             canListen = false;
             bound = new MulticastSocket(new InetSocketAddress(address, 0));

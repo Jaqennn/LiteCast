@@ -24,10 +24,77 @@ import org.xml.sax.helpers.DefaultHandler;
 public final class Xml {
     private Xml() {}
 
+    private static final int MAX_DEPTH = 32;
+
     public static String escape(String value) {
         if (value == null) return "";
-        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                .replace("\"", "&quot;").replace("'", "&apos;");
+        StringBuilder out = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if ((c < 0x20 && c != '\t' && c != '\n' && c != '\r') || c == 0xFFFE || c == 0xFFFF) continue;
+            switch (c) {
+                case '&' -> out.append("&amp;");
+                case '<' -> out.append("&lt;");
+                case '>' -> out.append("&gt;");
+                case '"' -> out.append("&quot;");
+                case '\'' -> out.append("&apos;");
+                default -> out.append(c);
+            }
+        }
+        return out.toString();
+    }
+
+    private static void checkNestingDepth(String xml) {
+        int depth = 0;
+        boolean inComment = false;
+        boolean inCdata = false;
+        int len = xml.length();
+        for (int i = 0; i < len; i++) {
+            if (inComment) {
+                if (i + 2 < len && xml.charAt(i) == '-' && xml.charAt(i + 1) == '-' && xml.charAt(i + 2) == '>') {
+                    inComment = false;
+                    i += 2;
+                }
+                continue;
+            }
+            if (inCdata) {
+                if (i + 2 < len && xml.charAt(i) == ']' && xml.charAt(i + 1) == ']' && xml.charAt(i + 2) == '>') {
+                    inCdata = false;
+                    i += 2;
+                }
+                continue;
+            }
+            if (xml.charAt(i) != '<' || i + 1 >= len) continue;
+            char next = xml.charAt(i + 1);
+            if (next == '!') {
+                if (xml.startsWith("<!--", i)) { inComment = true; i += 3; }
+                else if (xml.startsWith("<![CDATA[", i)) { inCdata = true; i += 8; }
+                continue;
+            }
+            if (next == '?') continue;
+            if (next == '/') {
+                if (depth > 0) depth--;
+                continue;
+            }
+            // Opening tag: scan to closing '>' to check if self-closing.
+            int close = i + 1;
+            char quote = 0;
+            while (close < len) {
+                char ch = xml.charAt(close);
+                if (quote != 0) {
+                    if (ch == quote) quote = 0;
+                } else if (ch == '"' || ch == '\'') {
+                    quote = ch;
+                } else if (ch == '>') {
+                    break;
+                }
+                close++;
+            }
+            if (close < len && xml.charAt(close - 1) != '/') {
+                if (++depth > MAX_DEPTH) throw new IllegalArgumentException("XML nesting too deep");
+            }
+            i = close;
+        }
     }
 
     public static Document parse(String value) throws Exception {
@@ -36,6 +103,7 @@ public final class Xml {
         text = text.trim();
         // No DTDs at all: closes off entity expansion and external fetches on every parser.
         if (text.contains("<!DOCTYPE") || text.contains("<!ENTITY")) throw new IllegalArgumentException("DTD disabled");
+        checkNestingDepth(text);
         DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();
         f.setNamespaceAware(true);
         try { f.setFeature("http://xml.org/sax/features/external-general-entities", false); } catch (Exception ignored) { }
@@ -81,12 +149,29 @@ public final class Xml {
     }
 
     public static String resourceMime(String metadata) {
+        return resourceMime(metadata, null);
+    }
+
+    public static String resourceMime(String metadata, String preferredUri) {
         try {
             var nodes = parse(metadata).getElementsByTagNameNS("*", "res");
-            if (nodes.getLength() > 0) {
-                String[] info = ((Element) nodes.item(0)).getAttribute("protocolInfo").split(":", 4);
-                if (info.length == 4 && info[2].contains("/")) return info[2];
+            String firstAny = "";
+            String firstMedia = "";
+            for (int i = 0; i < nodes.getLength(); i++) {
+                Element el = (Element) nodes.item(i);
+                String[] info = el.getAttribute("protocolInfo").split(":", 4);
+                if (info.length != 4 || !info[2].contains("/")) continue;
+                String mime = info[2];
+                if (preferredUri != null && !preferredUri.isEmpty() && preferredUri.equals(el.getTextContent().trim())) {
+                    return mime;
+                }
+                if (firstAny.isEmpty()) firstAny = mime;
+                String lower = mime.toLowerCase(java.util.Locale.ROOT);
+                if (firstMedia.isEmpty() && !lower.startsWith("image/") && !lower.startsWith("text/")) {
+                    firstMedia = mime;
+                }
             }
+            return firstMedia.isEmpty() ? firstAny : firstMedia;
         } catch (Exception ignored) { }
         return "";
     }

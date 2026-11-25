@@ -34,6 +34,7 @@ public final class HttpServer implements AutoCloseable {
     private final ThreadPoolExecutor workers = new ThreadPoolExecutor(2, 8, 30, TimeUnit.SECONDS, new ArrayBlockingQueue<>(32));
     private final ScheduledExecutorService events = Executors.newSingleThreadScheduledExecutor();
     private final Map<String, Subscription> subscriptions = new ConcurrentHashMap<>();
+    private final Set<String> pendingPublish = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private volatile boolean closed;
 
     private static final class Subscription {
@@ -41,6 +42,8 @@ public final class HttpServer implements AutoCloseable {
         final URI callback;
         final InetAddress peer;
         volatile long expires;
+        volatile boolean ready;
+        int failures;
         long sequence;
         Subscription(String service, URI callback, InetAddress peer, int seconds) {
             this.service = service; this.callback = callback; this.peer = peer; renew(seconds);
@@ -91,7 +94,7 @@ public final class HttpServer implements AutoCloseable {
                     }
                 } else if (r.path.startsWith("/service/") && r.path.endsWith(".xml") && Dlna.SERVICES.contains(r.path.substring(9, r.path.length() - 4))) {
                     send(client, 200, Map.of(), "text/xml; charset=\"utf-8\"", Dlna.scpd(r.path.substring(9, r.path.length() - 4)), head);
-                } else send(client, 404, Map.of(), "text/plain", "Not found");
+                } else send(client, 404, Map.of(), "text/plain", "Not found", head);
             } else if (r.method.equals("POST") && r.path.startsWith("/control/")) {
                 String service = r.path.substring(9);
                 if (!Dlna.SERVICES.contains(service)) { send(client, 404, Map.of(), "text/plain", "Not found"); return; }
@@ -112,7 +115,7 @@ public final class HttpServer implements AutoCloseable {
                     }
                     Map<String, String> response = controller.action(service, name, args);
                     send(client, 200, Map.of("EXT", ""), "text/xml; charset=\"utf-8\"", Dlna.response(service, name, response));
-                    if (!name.startsWith("Get") && !name.equals("ListPresets")) publish();
+                    if (!name.startsWith("Get") && !name.equals("ListPresets")) publish(service);
                 } catch (Dlna.Fault f) {
                     send(client, 500, Map.of("EXT", ""), "text/xml; charset=\"utf-8\"", Dlna.fault(f.code, f.getMessage()));
                 } catch (Exception e) {
@@ -122,7 +125,7 @@ public final class HttpServer implements AutoCloseable {
             } else if ((r.method.equals("SUBSCRIBE") || r.method.equals("UNSUBSCRIBE")) && r.path.startsWith("/event/")) {
                 subscribe(client, r);
             } else send(client, 405, Map.of("Allow", "GET, HEAD, POST, SUBSCRIBE, UNSUBSCRIBE"), "text/plain", "Method not allowed");
-        } catch (Exception ignored) { /* Peer can disconnect while sending a command. */ }
+        } catch (Exception | StackOverflowError ignored) { /* Peer can disconnect or send malformed nested requests. */ }
     }
 
     private static boolean acceptsXml(Request r) {
@@ -178,18 +181,35 @@ public final class HttpServer implements AutoCloseable {
                     throw new IllegalArgumentException();
                 }
                 s = new Subscription(service, uri, r.peer, seconds);
-                subscriptions.put(s.id, s);
             } catch (Exception e) { send(client, 412, Map.of(), "text/plain", "Invalid callback"); return; }
         }
         send(client, 200, Map.of("SID", s.id, "TIMEOUT", "Second-" + seconds), "text/plain", "");
         if (sid == null) {
+            subscriptions.put(s.id, s);
             final Subscription first = s;
-            events.schedule(() -> notifyOne(first), 150, TimeUnit.MILLISECONDS);
+            events.schedule(() -> {
+                first.ready = true;
+                notifyOne(first);
+            }, 150, TimeUnit.MILLISECONDS);
         }
     }
 
     public void publish() {
-        if (!closed) try { events.execute(() -> subscriptions.values().forEach(this::notifyOne)); } catch (RejectedExecutionException ignored) { }
+        for (String service : Dlna.SERVICES) publish(service);
+    }
+
+    public void publish(String service) {
+        if (closed || !pendingPublish.add(service)) return;
+        try {
+            events.execute(() -> {
+                pendingPublish.remove(service);
+                for (Subscription s : subscriptions.values()) {
+                    if (s.ready && s.service.equals(service)) notifyOne(s);
+                }
+            });
+        } catch (RejectedExecutionException ignored) {
+            pendingPublish.remove(service);
+        }
     }
 
     private void notifyOne(Subscription s) {
@@ -211,17 +231,24 @@ public final class HttpServer implements AutoCloseable {
                 connection.getOutputStream().write(header.getBytes(StandardCharsets.US_ASCII));
                 connection.getOutputStream().write(body);
                 connection.getOutputStream().flush();
-                String status = line(connection.getInputStream(), 1024);
+                String status = line(new BufferedInputStream(connection.getInputStream()), 1024);
+                s.failures = 0;
                 if (status == null || !status.matches("HTTP/1\\.[01] 2\\d\\d.*")) subscriptions.remove(s.id);
             }
-        } catch (Exception ignored) { /* A sleeping sender may temporarily miss an event; retain until expiry. */ }
+        } catch (Exception ignored) {
+            if (++s.failures >= 3) subscriptions.remove(s.id);
+        }
     }
 
     static Request read(Socket client) throws Exception {
-        return read(new BufferedInputStream(client.getInputStream()), client.getInetAddress());
+        return read(new BufferedInputStream(client.getInputStream()), client.getInetAddress(), client.getOutputStream());
     }
 
     static Request read(InputStream input, InetAddress peer) throws Exception {
+        return read(input, peer, null);
+    }
+
+    static Request read(InputStream input, InetAddress peer, OutputStream output) throws Exception {
         String start = line(input, 8192);
         if (start == null) throw new IOException();
         String[] pieces = start.trim().split(" +");
@@ -241,16 +268,24 @@ public final class HttpServer implements AutoCloseable {
             if (colon <= 0) continue; // ignore malformed header lines rather than dropping the request
             headers.put(h.substring(0, colon).trim().toLowerCase(Locale.US), h.substring(colon + 1).trim());
         }
+        boolean chunked = headers.getOrDefault("transfer-encoding", "").toLowerCase(Locale.US).contains("chunked");
+        int contentLength = 0;
+        if (!chunked) {
+            contentLength = Integer.parseInt(headers.getOrDefault("content-length", "0").trim());
+            if (contentLength < 0 || contentLength > MAX_BODY) throw new IOException();
+        }
+        if (output != null && headers.getOrDefault("expect", "").toLowerCase(Locale.US).contains("100-continue")) {
+            output.write("HTTP/1.1 100 Continue\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
+            output.flush();
+        }
         byte[] bytes;
-        if (headers.getOrDefault("transfer-encoding", "").toLowerCase(Locale.US).contains("chunked")) {
+        if (chunked) {
             bytes = readChunked(input);
         } else {
-            int length = Integer.parseInt(headers.getOrDefault("content-length", "0").trim());
-            if (length < 0 || length > MAX_BODY) throw new IOException();
-            bytes = new byte[length];
+            bytes = new byte[contentLength];
             int offset = 0;
-            while (offset < length) {
-                int n = input.read(bytes, offset, length - offset);
+            while (offset < contentLength) {
+                int n = input.read(bytes, offset, contentLength - offset);
                 if (n < 0) throw new EOFException();
                 offset += n;
             }
@@ -260,24 +295,28 @@ public final class HttpServer implements AutoCloseable {
 
     private static byte[] readChunked(InputStream input) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buffer = new byte[4096];
         while (true) {
             String sizeLine = line(input, 1024);
             if (sizeLine == null) throw new EOFException();
             int semicolon = sizeLine.indexOf(';');
             int size = Integer.parseInt((semicolon >= 0 ? sizeLine.substring(0, semicolon) : sizeLine).trim(), 16);
-            if (size < 0 || out.size() + size > MAX_BODY) throw new IOException();
+            if (size < 0 || size > MAX_BODY - out.size()) throw new IOException();
             if (size == 0) {
-                for (String trailer; (trailer = line(input, 1024)) != null && !trailer.isEmpty(); ) { /* discard trailers */ }
+                int trailerBytes = 0;
+                for (String trailer; (trailer = line(input, 1024)) != null && !trailer.isEmpty(); ) {
+                    trailerBytes += trailer.length();
+                    if (trailerBytes > 4096) throw new IOException();
+                }
                 return out.toByteArray();
             }
-            byte[] chunk = new byte[size];
-            int offset = 0;
-            while (offset < size) {
-                int n = input.read(chunk, offset, size - offset);
+            int remaining = size;
+            while (remaining > 0) {
+                int n = input.read(buffer, 0, Math.min(buffer.length, remaining));
                 if (n < 0) throw new EOFException();
-                offset += n;
+                out.write(buffer, 0, n);
+                remaining -= n;
             }
-            out.write(chunk);
             line(input, 16); // CRLF after each chunk
         }
     }

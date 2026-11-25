@@ -92,12 +92,15 @@ public:
     }
 
     void stop() {
-        std::lock_guard<std::mutex> lk(mLock);
-        mClosing.store(true);
-        if (mStream) {
-            mStream->stop();
-            mStream->close();
-            mStream.reset();
+        std::shared_ptr<oboe::AudioStream> stream;
+        {
+            std::lock_guard<std::mutex> lk(mLock);
+            mClosing.store(true);
+            stream = std::move(mStream);
+        }
+        if (stream) {
+            stream->stop();
+            stream->close();
         }
     }
 
@@ -120,12 +123,15 @@ private:
     friend class OboeCallbacks;
 
     // oboe error thread, on device loss: reopen and restart unless tearing down
-    void reopenAfterError() {
+    void reopenAfterError(oboe::AudioStream *failedStream) {
         std::lock_guard<std::mutex> lk(mLock);
-        if (mClosing.load()) return;
+        if (mClosing.load() || (failedStream && mStream.get() != failedStream)) return;
         mStream.reset();
         mTimeline->reprime();
-        if (openLocked()) mStream->requestStart();
+        if (openLocked() && mStream->requestStart() != oboe::Result::OK) {
+            mStream->close();
+            mStream.reset();
+        }
     }
 
     bool openLocked() {  // caller holds mLock
@@ -195,11 +201,11 @@ private:
     int32_t mLastXrun = 0;               // debug-poll thread only
 };
 
-inline void OboeCallbacks::onErrorAfterClose(oboe::AudioStream *, oboe::Result error) {
+inline void OboeCallbacks::onErrorAfterClose(oboe::AudioStream *stream, oboe::Result error) {
     // device disconnect (e.g. BT/headset change): oboe already closed the stream, ask
     // AudioOutput to reopen
     mLog->error("Oboe stream error: %s - reopening", oboe::convertToText(error));
-    if (auto owner = mOwner.lock()) owner->reopenAfterError();
+    if (auto owner = mOwner.lock()) owner->reopenAfterError(stream);
 }
 
 #endif  // AUDIO_OUTPUT_H

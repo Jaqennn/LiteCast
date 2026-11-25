@@ -193,12 +193,21 @@ public final class Dlna {
     public static long millis(String value) throws Fault {
         try {
             String v = value.trim();
-            String[] p = v.split(":");
+            String[] p = v.split(":", -1);
             double seconds;
-            if (p.length == 3) seconds = Integer.parseInt(p[0].trim()) * 3600.0 + Integer.parseInt(p[1].trim()) * 60.0 + Double.parseDouble(p[2].trim());
-            else if (p.length == 2) seconds = Integer.parseInt(p[0].trim()) * 60.0 + Double.parseDouble(p[1].trim());
-            else if (p.length == 1) seconds = Double.parseDouble(p[0]);
-            else throw new IllegalArgumentException();
+            if (p.length == 3) {
+                int h = Integer.parseInt(p[0].trim()), m = Integer.parseInt(p[1].trim());
+                double s = Double.parseDouble(p[2].trim());
+                if (h < 0 || m < 0 || s < 0) throw new IllegalArgumentException();
+                seconds = h * 3600.0 + m * 60.0 + s;
+            } else if (p.length == 2) {
+                int m = Integer.parseInt(p[0].trim());
+                double s = Double.parseDouble(p[1].trim());
+                if (m < 0 || s < 0) throw new IllegalArgumentException();
+                seconds = m * 60.0 + s;
+            } else if (p.length == 1) {
+                seconds = Double.parseDouble(p[0]);
+            } else throw new IllegalArgumentException();
             if (!Double.isFinite(seconds) || seconds < 0 || seconds > 9999 * 3600.0) throw new IllegalArgumentException();
             return (long) (seconds * 1000);
         } catch (Exception e) { throw new Fault(711, "Illegal seek target"); }

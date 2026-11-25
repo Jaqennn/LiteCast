@@ -23,30 +23,35 @@ object DmapParser {
 
     // tags that are containers (contain nested dmap items)
     private val CONTAINER_TAGS = setOf("mlit", "mcon", "mlcl")
+    private const val MAX_DEPTH = 16
 
-    fun parse(data: ByteArray): Map<String, Any> {
+    fun parse(data: ByteArray): Map<String, Any> = parseRange(data, 0, data.size, 0)
+
+    private fun parseRange(data: ByteArray, start: Int, end: Int, depth: Int): Map<String, Any> {
+        if (depth >= MAX_DEPTH || start >= end) return emptyMap()
         val result = mutableMapOf<String, Any>()
-        val buf = ByteBuffer.wrap(data).order(ByteOrder.BIG_ENDIAN)
+        val buf = ByteBuffer.wrap(data, start, end - start).order(ByteOrder.BIG_ENDIAN)
         while (buf.remaining() >= 8) {
-            val tagBytes = ByteArray(4)
-            buf.get(tagBytes)
-            val tag = String(tagBytes, Charsets.US_ASCII)
+            val tagStart = buf.position()
+            val tag = String(data, tagStart, 4, Charsets.US_ASCII)
+            buf.position(tagStart + 4)
             val len = buf.int
             if (len < 0 || len > buf.remaining()) break
-            val payload = ByteArray(len)
-            buf.get(payload)
+            val payloadStart = buf.position()
+            val payloadEnd = payloadStart + len
+            buf.position(payloadEnd)
             result[tag] = when {
-                tag in CONTAINER_TAGS -> parse(payload)
-                tag in INT_TAGS -> _readInt(payload)
-                else -> String(payload, Charsets.UTF_8)
+                tag in CONTAINER_TAGS -> parseRange(data, payloadStart, payloadEnd, depth + 1)
+                tag in INT_TAGS -> _readInt(data, payloadStart, len)
+                else -> String(data, payloadStart, len, Charsets.UTF_8)
             }
         }
         return result
     }
 
-    private fun _readInt(b: ByteArray): Long {
+    private fun _readInt(data: ByteArray, offset: Int, len: Int): Long {
         var v = 0L
-        for (byte in b) v = (v shl 8) or (byte.toLong() and 0xFF)
+        for (i in 0 until len) v = (v shl 8) or (data[offset + i].toLong() and 0xFF)
         return v
     }
 }

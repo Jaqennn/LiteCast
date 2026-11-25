@@ -61,6 +61,7 @@ struct AudioEngine {
     }
 
     bool configure(const AudioConfig &cfg) {
+        std::lock_guard<std::mutex> decodeLock(mDecodeLock);
         std::lock_guard<std::mutex> lk(mRebuildLock);
         if (!mApplied) {
             initInternals(cfg);
@@ -160,6 +161,8 @@ struct AudioEngine {
         if (changed || (!mDecoder.decoder && monoNs() >= mRetryAtNs)) {
             mDecoder = {}; // release old decoder first to free resources
             if (changed) mTimeline->requestFlush();
+            // codec switch is a discontinuity; reanchor before spawning the new drain thread
+            mTimeline->reanchorTracker();
             litecast_trace("audio.decoder.init.begin");
             mDecoder = {ct, wantConfig,
                         makeDecoder(ct, wantConfig.spf, mSampleRate, mChannels, *mTimeline,
@@ -168,8 +171,6 @@ struct AudioEngine {
                                     mApplied->realtimePriority, mApplied->lowLatency)};
             litecast_trace(mDecoder.decoder ? "audio.decoder.init.ready" : "audio.decoder.init.failed");
             mRetryAtNs = mDecoder.decoder ? 0 : monoNs() + DECODER_RETRY_NS;
-            // codec switch is definitely a discontinuity
-            mTimeline->reanchorTracker();
         }
         if (mDecoder.decoder && !mDecoder.decoder->decode(data, len, ptsNs))
             mDecodeErrors.fetch_add(1, std::memory_order_relaxed);

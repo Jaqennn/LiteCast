@@ -17,14 +17,52 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-static JNIEnv *_get_env(android_callback_ctx_t *ctx) {
-    JNIEnv *env = ctx ? litecast_jni_env(ctx->jvm) : NULL;
-    /* Clear any pending exception from a previous callback on this thread,
-       otherwise JNI calls like NewByteArray will fatally abort. */
+static void _clear_exception(JNIEnv *env) {
     if (env && (*env)->ExceptionCheck(env)) {
         (*env)->ExceptionDescribe(env);
         (*env)->ExceptionClear(env);
     }
+}
+
+/* Safe UTF-8 -> jstring conversion: ART's NewStringUTF aborts on 4-byte UTF-8 (emoji)
+   or invalid byte sequences. Fast-path pure ASCII, otherwise use String(byte[], "UTF-8"). */
+static jstring _new_utf8_string(JNIEnv *env, const char *str) {
+    if (!str) str = "";
+    size_t len = 0;
+    int ascii = 1;
+    for (const unsigned char *p = (const unsigned char *)str; *p; ++p) {
+        if (*p >= 0x80) ascii = 0;
+        len++;
+    }
+    if (ascii) {
+        jstring s = (*env)->NewStringUTF(env, str);
+        if (!s) _clear_exception(env);
+        return s;
+    }
+    jbyteArray bytes = (*env)->NewByteArray(env, (jsize)len);
+    if (!bytes) {
+        _clear_exception(env);
+        return NULL;
+    }
+    (*env)->SetByteArrayRegion(env, bytes, 0, (jsize)len, (const jbyte *)str);
+    jclass str_cls = (*env)->FindClass(env, "java/lang/String");
+    jmethodID ctor = str_cls ? (*env)->GetMethodID(env, str_cls, "<init>", "([BLjava/lang/String;)V") : NULL;
+    jstring charset = ctor ? (*env)->NewStringUTF(env, "UTF-8") : NULL;
+    jstring result = (str_cls && ctor && charset)
+        ? (jstring)(*env)->NewObject(env, str_cls, ctor, bytes, charset)
+        : NULL;
+    if (charset) (*env)->DeleteLocalRef(env, charset);
+    if (str_cls) (*env)->DeleteLocalRef(env, str_cls);
+    (*env)->DeleteLocalRef(env, bytes);
+    if (!result) _clear_exception(env);
+    return result;
+}
+
+static JNIEnv *_get_env(android_callback_ctx_t *ctx) {
+    JNIEnv *env = ctx ? litecast_jni_env(ctx->jvm) : NULL;
+    /* Clear any pending exception from a previous callback on this thread,
+       otherwise JNI calls like NewByteArray will fatally abort. */
+    _clear_exception(env);
     return env;
 }
 
@@ -38,8 +76,13 @@ void android_callbacks_init(android_callback_ctx_t *ctx, JNIEnv *env, jobject ca
     memset(ctx->registered_keys, 0, sizeof(ctx->registered_keys));
 
     pthread_mutex_init(&ctx->playback_info_lock, NULL);
-    pthread_cond_init(&ctx->play_ready_cond, NULL);
+    pthread_condattr_t cond_attr;
+    pthread_condattr_init(&cond_attr);
+    pthread_condattr_setclock(&cond_attr, CLOCK_MONOTONIC);
+    pthread_cond_init(&ctx->play_ready_cond, &cond_attr);
+    pthread_condattr_destroy(&cond_attr);
     ctx->play_ready = 0;
+    ctx->play_stopping = 0;
     ctx->playback_position = 0.0;
     /* -1.0 is the video finished sentinel, reserved for _video_stop */
     ctx->playback_duration = 0.0;
@@ -93,8 +136,16 @@ void android_callbacks_update_playback_info(android_callback_ctx_t *ctx, double 
     ctx->playback_ready = ready;
     if (ready && !ctx->play_ready) {
         ctx->play_ready = 1;
-        pthread_cond_signal(&ctx->play_ready_cond);
+        pthread_cond_broadcast(&ctx->play_ready_cond);
     }
+    pthread_mutex_unlock(&ctx->playback_info_lock);
+}
+
+void android_callbacks_stop_wait(android_callback_ctx_t *ctx) {
+    if (!ctx) return;
+    pthread_mutex_lock(&ctx->playback_info_lock);
+    ctx->play_stopping = 1;
+    pthread_cond_broadcast(&ctx->play_ready_cond);
     pthread_mutex_unlock(&ctx->playback_info_lock);
 }
 
@@ -183,13 +234,15 @@ static void _display_pin(void *cls, char *pin) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
     
     /* certain senders trigger pair-pin-start even when we advertise no auth */
-    if (!ctx->require_pin) return;
+    if (!ctx->require_pin || !pin) return;
 
     JNIEnv *env = _get_env(ctx);
     if (!env) return;
-    jstring jpin = (*env)->NewStringUTF(env, pin);
+    jstring jpin = _new_utf8_string(env, pin);
+    if (!jpin) return;
     (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_display_pin, jpin);
     (*env)->DeleteLocalRef(env, jpin);
+    _clear_exception(env);
 }
 
 /* Stubs for less critical callbacks */
@@ -242,9 +295,11 @@ static void _audio_set_metadata(void *cls, const void *buf, int len) {
     JNIEnv *env = _get_env(ctx);
     if (!env || !buf || len <= 0) return;
     jbyteArray arr = (*env)->NewByteArray(env, len);
+    if (!arr) { _clear_exception(env); return; }
     (*env)->SetByteArrayRegion(env, arr, 0, len, (jbyte *)buf);
     (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_metadata, arr);
     (*env)->DeleteLocalRef(env, arr);
+    _clear_exception(env);
 }
 
 static void _audio_set_coverart(void *cls, const void *buf, int len) {
@@ -252,20 +307,28 @@ static void _audio_set_coverart(void *cls, const void *buf, int len) {
     JNIEnv *env = _get_env(ctx);
     if (!env || !buf || len <= 0) return;
     jbyteArray arr = (*env)->NewByteArray(env, len);
+    if (!arr) { _clear_exception(env); return; }
     (*env)->SetByteArrayRegion(env, arr, 0, len, (jbyte *)buf);
     (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_coverart, arr);
     (*env)->DeleteLocalRef(env, arr);
+    _clear_exception(env);
 }
 
 static void _audio_remote_control_id(void *cls, const char *dacp_id, const char *active_remote) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
     JNIEnv *env = _get_env(ctx);
     if (!env) return;
-    jstring jdacp = (*env)->NewStringUTF(env, dacp_id ? dacp_id : "");
-    jstring jremote = (*env)->NewStringUTF(env, active_remote ? active_remote : "");
+    jstring jdacp = _new_utf8_string(env, dacp_id ? dacp_id : "");
+    if (!jdacp) return;
+    jstring jremote = _new_utf8_string(env, active_remote ? active_remote : "");
+    if (!jremote) {
+        (*env)->DeleteLocalRef(env, jdacp);
+        return;
+    }
     (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_dacp_id, jdacp, jremote);
     (*env)->DeleteLocalRef(env, jdacp);
     (*env)->DeleteLocalRef(env, jremote);
+    _clear_exception(env);
 }
 
 static void _audio_set_progress(void *cls, uint32_t *start, uint32_t *curr, uint32_t *end) {
@@ -286,16 +349,19 @@ static void _mirror_video_running(void *cls, bool running) {
 static void _register_client(void *cls, const char *device_id, const char *pk_str, const char *name) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
     (void)device_id; (void)name;
-    if (ctx->registered_count >= 16) return;
+    if (!pk_str || ctx->registered_count >= 16) return;
     for (int i = 0; i < ctx->registered_count; i++) {
         if (ctx->registered_keys[i] && strcmp(ctx->registered_keys[i], pk_str) == 0) return;
     }
-    ctx->registered_keys[ctx->registered_count++] = strdup(pk_str);
+    char *copy = strdup(pk_str);
+    if (!copy) return;
+    ctx->registered_keys[ctx->registered_count++] = copy;
     LOGI("registered client pk (slot %d)", ctx->registered_count);
 }
 
 static bool _check_register(void *cls, const char *pk_str) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
+    if (!pk_str) return false;
     for (int i = 0; i < ctx->registered_count; i++) {
         if (ctx->registered_keys[i] && strcmp(ctx->registered_keys[i], pk_str) == 0) return true;
     }
@@ -309,14 +375,18 @@ static void _video_play(void *cls, const char *location, const float start_posit
     litecast_trace("callback.video-play");
     pthread_mutex_lock(&ctx->playback_info_lock);
     ctx->play_ready = 0;
+    ctx->playback_position = start_position;
+    ctx->playback_duration = 0.0;
+    ctx->playback_rate = 0.0f;
+    ctx->playback_ready = 0;
     pthread_mutex_unlock(&ctx->playback_info_lock);
-    android_callbacks_update_playback_info(ctx, start_position, 0.0, 0.0f, 0);
     JNIEnv *env = _get_env(ctx);
     if (!env || !location) return;
-    jstring jloc = (*env)->NewStringUTF(env, location);
+    jstring jloc = _new_utf8_string(env, location);
     if (!jloc) return;
     (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_video_play, jloc, (jfloat)start_position);
     (*env)->DeleteLocalRef(env, jloc);
+    _clear_exception(env);
 }
 
 /* self-driven senders (macOS) latch their scrubber timeline at /play; hold the response
@@ -324,12 +394,13 @@ static void _video_play(void *cls, const char *location, const float start_posit
 static void _video_wait_ready(void *cls) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
     struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
+    clock_gettime(CLOCK_MONOTONIC, &ts);
     ts.tv_sec += 10; // hold for max 10s
     litecast_trace("callback.wait-player");
     pthread_mutex_lock(&ctx->playback_info_lock);
-    while (!ctx->play_ready) {
-        if (pthread_cond_timedwait(&ctx->play_ready_cond, &ctx->playback_info_lock, &ts) == ETIMEDOUT) break;
+    while (!ctx->play_ready && !ctx->play_stopping) {
+        int rc = pthread_cond_timedwait(&ctx->play_ready_cond, &ctx->playback_info_lock, &ts);
+        if (rc != 0 && rc != EINTR) break;
     }
     pthread_mutex_unlock(&ctx->playback_info_lock);
 }

@@ -27,6 +27,12 @@ object Diagnostics {
         if (installed) return
         app = context.applicationContext ?: context
         current.value = read()
+        val interrupted = preferences.getString("startup_stage", null)
+        if (interrupted != null) {
+            record("LC-START-INTERRUPTED", interrupted,
+                "Previous startup did not finish. No crash stack was captured; the process may have crashed or been ended by the system/user.", true)
+            endStartup()
+        }
         // Preserve the previous process trail before the new receiver starts appending.
         val trace = File(app.filesDir, "litecast-airplay-trace.txt")
         if (trace.exists()) {
@@ -43,12 +49,6 @@ object Diagnostics {
                 }
             }
             trace.delete()
-        }
-        val interrupted = preferences.getString("startup_stage", null)
-        if (interrupted != null) {
-            record("LC-START-INTERRUPTED", interrupted,
-                "Previous startup did not finish. No crash stack was captured; the process may have crashed or been ended by the system/user.", true)
-            endStartup()
         }
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->

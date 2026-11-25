@@ -104,8 +104,13 @@ class HomeActivity : ComponentActivity() {
     private val binding = ServiceBinding(this)
     private val screen = mutableStateOf(Screen.HOME)
     private var feedbackFrom = Screen.HOME
+    private var pendingPermissionRetry = false
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        if (hasLocalNetwork()) binding.service.value?.let { ensureRunning(it, retryAfterPermission = true) }
+        if (hasLocalNetwork()) {
+            val svc = binding.service.value
+            if (svc != null) ensureRunning(svc, retryAfterPermission = true)
+            else pendingPermissionRetry = true
+        }
     }
 
     private enum class Screen { HOME, SETTINGS, FEEDBACK }
@@ -122,7 +127,11 @@ class HomeActivity : ComponentActivity() {
             finish()
             return
         }
-        binding.onConnected = { svc -> ensureRunning(svc) }
+        binding.onConnected = { svc ->
+            val retry = pendingPermissionRetry
+            pendingPermissionRetry = false
+            ensureRunning(svc, retryAfterPermission = retry)
+        }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 Diagnostics.reports.collect { report ->
@@ -166,6 +175,7 @@ class HomeActivity : ComponentActivity() {
     }
 
     private fun ensureRunning(svc: AirPlayService, retryAfterPermission: Boolean = false) {
+        if (!hasLocalNetwork()) return
         val prefs = getSharedPreferences(Prefs.NAME, MODE_PRIVATE)
         if (prefs.getBoolean(LiteCast.PREF_RECEIVER_ENABLED, true) &&
             !svc.isReceiverActive && (svc.serverState.value == AirPlayService.ServerState.STOPPED || retryAfterPermission)) {

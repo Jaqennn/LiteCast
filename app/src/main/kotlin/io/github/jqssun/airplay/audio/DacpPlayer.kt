@@ -28,8 +28,17 @@ class DacpPlayer(
         val active: Boolean,
     )
 
+    private var released = false
+
     // must be called on the constructor looper
-    fun refresh() = invalidateState()
+    fun refresh() {
+        if (!released) invalidateState()
+    }
+
+    override fun handleRelease(): ListenableFuture<*> {
+        released = true
+        return Futures.immediateVoidFuture()
+    }
 
     override fun getState(): State {
         val s = snapshot()
@@ -64,7 +73,9 @@ class DacpPlayer(
                     MediaItemData.Builder(UID_PREVIOUS).build(),
                     MediaItemData.Builder(UID_CURRENT)
                         .setMediaMetadata(metadata)
-                        .setDurationUs(if (s.durationMs > 0) s.durationMs * 1000 else C.TIME_UNSET)
+                        .setDurationUs(
+                            if (s.durationMs in 1L..(Long.MAX_VALUE / 1000L)) s.durationMs * 1000L else C.TIME_UNSET
+                        )
                         .setIsSeekable(false)
                         .build(),
                     MediaItemData.Builder(UID_NEXT).build(),

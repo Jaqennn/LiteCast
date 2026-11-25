@@ -17,7 +17,9 @@ execute_process(COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/${UXPLAY_LIB}" "${UXPLAY_PATCHED}"
     COMMAND_ERROR_IS_FATAL ANY)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../tools/prepare_uxplay.py")
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../tools/prepare_uxplay.py"
+    "${CMAKE_CURRENT_SOURCE_DIR}/${UXPLAY_LIB}/raop.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/${UXPLAY_LIB}/httpd.c")
 
 
 # ---------- OpenSSL (built from source via openssl-cmake) ----------

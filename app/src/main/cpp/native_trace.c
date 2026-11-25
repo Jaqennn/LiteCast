@@ -40,7 +40,7 @@ void litecast_trace(const char *stage) {
 }
 void litecast_trace_audio(int ct, int spf, int backlog, int cushion, int mean_us,
                           int max_us, int errors, unsigned packets, long long pts_ms) {
-    pthread_mutex_lock(&trace_lock);
+    if (pthread_mutex_trylock(&trace_lock) != 0) return;
     if (trace_fd >= 0) {
         struct stat info;
         if (fstat(trace_fd, &info) == 0 && info.st_size > 24000) ftruncate(trace_fd, 0);

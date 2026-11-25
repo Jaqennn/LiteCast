@@ -82,6 +82,14 @@ class UsbMdnsAdvertiser(
                     l.socket.receive(packet)
                 } catch (_: SocketTimeoutException) {
                     continue
+                } catch (e: java.io.IOException) {
+                    if (!running) break
+                    Log.w(TAG, "USB mDNS receive error; resetting link", e)
+                    _close(l)
+                    link = null
+                    _report(null)
+                    nextScan = 0L
+                    continue
                 }
                 if (running) _onPacket(l, packet)
             }

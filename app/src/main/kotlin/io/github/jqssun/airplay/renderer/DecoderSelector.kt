@@ -67,19 +67,22 @@ class DecoderSelector(private val ctx: Context) {
         val info = _probableSafe(HEVC, -1) ?: return null
         if (force || _hevcWhitelisted(info)) return info
         Log.i(TAG, "hevc decoder not whitelisted: ${info.name}")
-        val avcCaps = avc?.videoCaps(AVC) ?: return null
-        return info.takeIf { !_canMeet(avcCaps, w, h, fps) && _canMeet(info.videoCaps(HEVC), w, h, fps) }
+        val avcCaps = avc?.let { runCatching { it.videoCaps(AVC) }.getOrNull() } ?: return null
+        val hevcCaps = runCatching { info.videoCaps(HEVC) }.getOrNull() ?: return null
+        return info.takeIf { !_canMeet(avcCaps, w, h, fps) && _canMeet(hevcCaps, w, h, fps) }
     }
 
     fun software(mime: String, w: Int, h: Int): MediaCodecInfo? =
         MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.firstOrNull { info ->
-            !info.isEncoder && info.supportsMime(mime) &&
+            !info.isEncoder && (Build.VERSION.SDK_INT < 29 || !info.isAlias) &&
+                info.supportsMime(mime) && !_inList(crashSwBlacklist, info.name) &&
                 (if (Build.VERSION.SDK_INT >= 29) info.isSoftwareOnly
                 else info.name.lowercase().let {
                     it.startsWith("omx.google.") || it.startsWith("c2.android.") ||
                         (!it.startsWith("omx.") && !it.startsWith("c2."))
-                })
-        }?.takeIf { _portraitSafe(w, h, it.videoCaps(mime)::isSizeSupported) }
+                }) &&
+                runCatching { _portraitSafe(w, h, info.videoCaps(mime)::isSizeSupported) }.getOrDefault(false)
+        }
 
     fun adaptive(info: MediaCodecInfo, mime: String) = !_inList(noAdaptive, info.name) &&
         runCatching { info.getCapabilitiesForType(mime).isFeatureSupported(CodecCapabilities.FEATURE_AdaptivePlayback) }
@@ -187,6 +190,7 @@ class DecoderSelector(private val ctx: Context) {
         const val AVC = MediaFormat.MIMETYPE_VIDEO_AVC
         const val HEVC = MediaFormat.MIMETYPE_VIDEO_HEVC
         private val qti = listOf("omx.qcom", "c2.qti")
+        private val crashSwBlacklist = listOf("OMX.qcom.video.decoder.hevcswvdec", "OMX.SEC.hevc.sw.dec")
         private val noAdaptive = listOf("omx.intel", "omx.mtk")
         private val vendorLowLatency = listOf(
             listOf("omx.hisi", "c2.hisi") to mapOf(

@@ -40,8 +40,9 @@ class LanProxyBypassTest {
     fun lanAndLoopbackHostsAreLocal() {
         for (host in listOf(
             "localhost", "LOCALHOST.", "127.0.0.1", "127.8.9.10", "10.0.0.5", "172.16.0.1", "172.31.255.255",
-            "192.168.1.20", "169.254.3.4", "100.64.0.1", "[::1]", "::1", "fe80::1%wlan0", "[fd12:3456::1]",
-            "::ffff:192.168.1.2", "iPhone.local", "tv.localhost",
+            "192.168.1.20", "169.254.3.4", "100.64.0.1", "[::1]", "::1", "0:0:0:0:0:0:0:1", "::",
+            "fe80::1%wlan0", "[fd12:3456::1]", "::ffff:192.168.1.2", "::ffff:c0a8:0102",
+            "0:0:0:0:0:ffff:192.168.1.2", "iPhone.local", "tv.localhost",
         )) assertTrue(host, LanProxyBypass.isLocalHost(host))
     }
 
@@ -50,7 +51,7 @@ class LanProxyBypassTest {
         for (host in listOf(
             "rr3---sn-a5mekn7s.googlevideo.com", "www.youtube.com", "8.8.8.8", "172.32.0.1", "172.15.0.1",
             "192.169.0.1", "100.128.0.1", "2001:4860:4860::8888", "[2408:8000::1]", "localhost.example.com",
-            "evil.local.example", "1.2.3", "300.1.1.1", "01234.1.1.1", "",
+            "evil.local.example", "1.2.3", "300.1.1.1", "01234.1.1.1", "1fe80::1", "",
         )) assertFalse(host, LanProxyBypass.isLocalHost(host))
     }
 

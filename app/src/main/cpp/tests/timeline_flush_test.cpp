@@ -41,5 +41,25 @@ int main() {
     }
     timeline.read(output, 20);
     for (auto sample : output) assert(sample == 222);
+
+    // Regression: DelayTracker must clamp huge arrival-PTS deltas in 64-bit (no negative OOB write)
+    // and underrun must reanchor DelayTracker so clock shifts don't poison mBaseNs.
+    {
+        TimelineBuffer adaptive(44100, 2, 0, 95);
+        int16_t pcm[256] = {1};
+        int16_t out[256] = {0};
+        adaptive.write(pcm, 256, 1'000'000'000LL);
+        // Trigger underrun
+        adaptive.read(out, 128);
+        adaptive.read(out, 128);
+        // Huge clock jump (> 124 days, which previously wrapped int32 bin negative in observe())
+        adaptive.write(pcm, 256, 1'795'000'000'000'000'000LL);
+        // Direct DelayTracker check with > INT32_MAX * BUCKET_NS delta without reanchor
+        DelayTracker tracker(44100, 2, 0, 95);
+        tracker.observe(1'795'000'000'000'000'000LL, 1'000'000'000LL, 10'000'000LL);
+        tracker.observe(1'000'000'000LL, 2'000'000'000LL, 10'000'000LL);
+        assert(tracker.target() <= tracker.ceil());
+    }
+
     std::cout << "Timeline flush: stale audio discarded, new audio retained, continuous playback preserved\n";
 }

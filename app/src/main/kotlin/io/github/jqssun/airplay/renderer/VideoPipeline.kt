@@ -53,9 +53,15 @@ class VideoPipeline {
         pendingDisplay = surface
         displayDirty = true
         lock.notifyAll()
+        // surfaceDestroyed requires detaching EGLSurface before returning so the native window isn't torn down mid-draw
+        if (surface == null && running && Thread.currentThread() !== thread) {
+            while (running && displayDirty) {
+                try { lock.wait(1000) } catch (_: InterruptedException) { break }
+            }
+        }
     }
 
-    fun setVideoSize(w: Int, h: Int) {
+    fun setVideoSize(w: Int, h: Int) = synchronized(lock) {
         videoW = w
         videoH = h
         surfaceTexture?.setDefaultBufferSize(w, h)
@@ -77,12 +83,14 @@ class VideoPipeline {
             _initGl()
         } catch (e: Exception) {
             Log.e(TAG, "GL init failed", e)
+            _releaseGl()
             synchronized(lock) { running = false; lock.notifyAll() }
             return
         }
         Matrix.setIdentityM(texMatrix, 0)
         synchronized(lock) {
             inputSurface = Surface(surfaceTexture)
+            if (pendingDisplay != null) displayDirty = true
             lock.notifyAll()
         }
         while (true) {
@@ -94,7 +102,6 @@ class VideoPipeline {
                 if (running && displayDirty) {
                     newDisplay = pendingDisplay
                     displayChanged = true
-                    displayDirty = false
                 }
                 if (running && frameAvailable) {
                     frameAvailable = false
@@ -102,7 +109,13 @@ class VideoPipeline {
                 }
             }
             if (!running) break
-            if (displayChanged) _bindDisplay(newDisplay)
+            if (displayChanged) {
+                _bindDisplay(newDisplay)
+                synchronized(lock) {
+                    if (pendingDisplay === newDisplay) displayDirty = false
+                    lock.notifyAll()
+                }
+            }
             if (doFrame) _consumeAndDraw()
         }
         _releaseGl()
@@ -132,9 +145,10 @@ class VideoPipeline {
         val st = surfaceTexture ?: return
         val egl = egl ?: return
         if (window == EGL14.EGL_NO_SURFACE) {
-            // no display: keep consuming so decoder doesn't stall
+            // no display: keep consuming so decoder doesn't stall, and capture transform matrix for first repaint
             egl.makeCurrent()
             st.updateTexImage()
+            st.getTransformMatrix(texMatrix)
             hasFrame = true
             return
         }
@@ -206,10 +220,18 @@ class VideoPipeline {
     }
 
     private fun _releaseGl() {
-        surfaceTexture?.release()
-        surfaceTexture = null
-        inputSurface?.release()
-        inputSurface = null
+        val st: SurfaceTexture?
+        synchronized(lock) {
+            st = surfaceTexture
+            surfaceTexture = null
+            inputSurface?.release()
+            inputSurface = null
+            frameAvailable = false
+            hasFrame = false
+            displayDirty = pendingDisplay != null
+            lock.notifyAll()
+        }
+        st?.release()
         egl?.let {
             if (window != EGL14.EGL_NO_SURFACE) it.destroySurface(window)
             it.close()

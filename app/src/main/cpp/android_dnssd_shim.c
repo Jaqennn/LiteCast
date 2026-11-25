@@ -149,7 +149,18 @@ dnssd_register_raop(dnssd_t *dnssd, unsigned short port)
         return -1;
     }
     strncat(dnssd->raop_servname, "@", sizeof(dnssd->raop_servname) - strlen(dnssd->raop_servname) - 1);
-    strncat(dnssd->raop_servname, dnssd->name, sizeof(dnssd->raop_servname) - strlen(dnssd->raop_servname) - 1);
+    size_t cur_len = strlen(dnssd->raop_servname);
+    size_t avail = sizeof(dnssd->raop_servname) - cur_len - 1;
+    size_t name_len = strlen(dnssd->name);
+    if (name_len > avail) {
+        /* Truncate on a UTF-8 codepoint boundary so JNI NewStringUTF never sees split bytes */
+        name_len = avail;
+        while (name_len > 0 && (((unsigned char)dnssd->name[name_len] & 0xC0) == 0x80)) {
+            name_len--;
+        }
+    }
+    memcpy(dnssd->raop_servname + cur_len, dnssd->name, name_len);
+    dnssd->raop_servname[cur_len + name_len] = '\0';
     return 0;
 }
 

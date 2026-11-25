@@ -197,7 +197,13 @@ class VideoRenderer(ctx: Context) {
         repeat(retries) {
             val idx = c.dequeueInputBuffer(FEED_WAIT_US)
             if (idx >= 0) {
-                val buf = c.getInputBuffer(idx) ?: return false
+                val buf = c.getInputBuffer(idx)
+                if (buf == null || data.size > buf.capacity()) {
+                    c.queueInputBuffer(idx, 0, 0, 0, 0)
+                    droppedFrames++
+                    Log.w(TAG, "Decoder input buffer unavailable or too small (${data.size} > ${buf?.capacity() ?: 0}); dropping frame")
+                    return false
+                }
                 buf.clear()
                 buf.put(data)
                 c.queueInputBuffer(idx, 0, data.size, ntpTimeNs / 1000, 0)
@@ -232,18 +238,18 @@ class VideoRenderer(ctx: Context) {
     }
 
     private fun startCodec(h265: Boolean) {
+        currentH265 = h265
         pipeline.start()
         pipeline.setVideoSize(videoWidth, videoHeight)
         val s = pipeline.inputSurface ?: return
-        currentH265 = h265
         val mime = if (h265) DecoderSelector.HEVC else DecoderSelector.AVC
-        val info = (if (h265) hevcDecoder else avcDecoder) ?: error("no decoder selected for $mime")
 
         firstFrameQueued = false
         try {
+            val info = (if (h265) hevcDecoder else avcDecoder) ?: error("no decoder selected for $mime")
             _startWithLadder(info, mime, s, h265)
         } catch (e: Exception) {
-            // strict hw decoders reject configs beyond their real limits
+            // strict hw decoders reject configs beyond their real limits (or no hw decoder was found)
             val sw = selector.software(mime, videoWidth, videoHeight) ?: throw e
             Log.w(TAG, "Hardware decoder failed, trying software fallback", e)
             _startWithLadder(sw, mime, s, h265)
@@ -315,16 +321,20 @@ class VideoRenderer(ctx: Context) {
         val info = MediaCodec.BufferInfo()
         while (true) {
             val idx = c.dequeueOutputBuffer(info, 0)
-            if (idx < 0) break
+            if (idx == MediaCodec.INFO_TRY_AGAIN_LATER) break
+            if (idx < 0) continue // INFO_OUTPUT_FORMAT_CHANGED / INFO_OUTPUT_BUFFERS_CHANGED
             _recordOutputFrameTime()
-            if (scheduledOutputBufferRelease) {
-                // schedule frame at VSYNC matching its NTP presentation time
+            if (scheduledOutputBufferRelease && info.presentationTimeUs > 0L) {
+                // schedule frame at VSYNC matching its NTP presentation time; re-anchor on clock jumps/drift
                 val ptsUs = info.presentationTimeUs
-                if (_ptsBaseUs == Long.MIN_VALUE) {
+                val nowNs = System.nanoTime()
+                var targetNs = if (_ptsBaseUs == Long.MIN_VALUE) nowNs else _wallBaseNs + (ptsUs - _ptsBaseUs) * 1000L
+                if (_ptsBaseUs == Long.MIN_VALUE || kotlin.math.abs(targetNs - nowNs) > 500_000_000L) {
                     _ptsBaseUs = ptsUs
-                    _wallBaseNs = System.nanoTime()
+                    _wallBaseNs = nowNs
+                    targetNs = nowNs
                 }
-                c.releaseOutputBuffer(idx, _wallBaseNs + (ptsUs - _ptsBaseUs) * 1000L)
+                c.releaseOutputBuffer(idx, targetNs)
             } else {
                 c.releaseOutputBuffer(idx, true)
             }

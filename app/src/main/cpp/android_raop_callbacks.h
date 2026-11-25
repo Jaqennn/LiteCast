@@ -48,6 +48,7 @@ typedef struct {
        establish their timeline after the real duration is known, not at duration 0 */
     pthread_cond_t play_ready_cond;
     int play_ready;
+    int play_stopping;
     AudioEngine *audio_engine;
 } android_callback_ctx_t;
 
@@ -56,6 +57,7 @@ void android_callbacks_destroy(android_callback_ctx_t *ctx, JNIEnv *env);
 void android_callbacks_fill(raop_callbacks_t *cbs, android_callback_ctx_t *ctx);
 void android_callbacks_update_playback_info(android_callback_ctx_t *ctx, double position,
                                              double duration, float rate, int ready);
+void android_callbacks_stop_wait(android_callback_ctx_t *ctx);
 
 #ifdef __cplusplus
 }

@@ -101,6 +101,8 @@ struct LatencyProbe {
     // call before feeding frame into MediaCodec
     void record(int64_t ptsUs, int64_t queueNs) {
         const uint64_t w = mWrite.load(std::memory_order_relaxed);
+        const uint64_t r = mRead.load(std::memory_order_acquire);
+        if (w - r >= CAP) return;
         mBuf[w % CAP] = {ptsUs, queueNs};
         mWrite.store(w + 1, std::memory_order_release);
     }
@@ -109,13 +111,17 @@ struct LatencyProbe {
     int64_t match(int64_t ptsUs, int64_t nowNs) {
         uint64_t r = mRead.load(std::memory_order_relaxed);
         const uint64_t w = mWrite.load(std::memory_order_acquire);
-        for (; r < w; r++) {
-            if (mBuf[r % CAP].ptsUs == ptsUs) {
-                const int64_t lat = nowNs - mBuf[r % CAP].queueNs;
-                mRead.store(r + 1, std::memory_order_release);
+        if (w - r > CAP) r = w - CAP;
+        for (uint64_t i = r; i < w; i++) {
+            if (mBuf[i % CAP].ptsUs == ptsUs) {
+                const int64_t lat = nowNs - mBuf[i % CAP].queueNs;
+                mRead.store(i + 1, std::memory_order_release);
                 return lat;
             }
         }
+        // if the codec rewrites PTS and nothing matches, shed one oldest entry when full
+        // so record() never stalls permanently
+        if (w - r >= CAP) mRead.store(r + 1, std::memory_order_release);
         return -1;
     }
 
@@ -247,7 +253,8 @@ private:
             if (oi < 0) continue;  // timeout / format / buffers changed
             size_t osz = 0;
             uint8_t *out = AMediaCodec_getOutputBuffer(mCodec, (size_t)oi, &osz);
-            if (out && info.size > 0) {
+            if (out && info.offset >= 0 && info.size > 0 &&
+                (size_t)info.offset <= osz && (size_t)info.size <= osz - (size_t)info.offset) {
                 mTimeline.write((const int16_t *)(out + info.offset),
                                 (size_t)info.size / sizeof(int16_t),
                                 (int64_t)info.presentationTimeUs * 1000);
@@ -375,7 +382,12 @@ private:
                 interleave<int16_t>(n, [](int16_t s) { return s; });
                 return true;
             case AV_SAMPLE_FMT_FLTP:  // aac, same conversion as libswresample
-                interleave<float>(n, [](float s) { return av_clip_int16(lrintf(s * (1 << 15))); });
+                interleave<float>(n, [](float s) -> int16_t {
+                    if (!std::isfinite(s)) return 0;
+                    if (s >= 1.0f) return 32767;
+                    if (s <= -1.0f) return -32768;
+                    return av_clip_int16((int)lrintf(s * (1 << 15)));
+                });
                 return true;
             default:
                 return false;

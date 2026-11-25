@@ -181,6 +181,12 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeStart(
     /* LiteCast: 0 asks the OS for a free port (used when a pre-installed receiver
        already holds the preferred one); only negative values mean "default" */
     unsigned short port = (unsigned short)(requestedPort >= 0 ? requestedPort : 7000);
+    /* Register dnssd records before starting httpd so early clients never race on TXT state */
+    if (ctx->dnssd) {
+        dnssd_register_raop(ctx->dnssd, port);
+        dnssd_register_airplay(ctx->dnssd, port);
+    }
+
     litecast_trace("server.listen.begin");
     int ret = raop_start_httpd(ctx->raop, &port);
     if (ret < 0) {
@@ -192,12 +198,6 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeStart(
     raop_set_port(ctx->raop, port);
 
     LOGI("AirPlay server started on port %d", port);
-
-    /* Register dnssd records (stored in shim, Kotlin reads them) */
-    if (ctx->dnssd) {
-        dnssd_register_raop(ctx->dnssd, port);
-        dnssd_register_airplay(ctx->dnssd, port);
-    }
 
     litecast_trace("server.listen.ready");
     return (jint)port;
@@ -223,6 +223,8 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeStop(
     if (!ctx || !ctx->raop) return;
 
     litecast_trace("server.stop.begin");
+    /* Wake any httpd thread blocked in _video_wait_ready() before joining it */
+    android_callbacks_stop_wait(&ctx->cb_ctx);
     raop_stop_httpd(ctx->raop);
     litecast_trace("server.stop.joined");
     LOGI("AirPlay server stopped");
@@ -275,10 +277,17 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeSetDisplaySize(
 /* Returns a HashMap<String, String> of TXT records */
 static jobject _build_txt_map(JNIEnv *env, dnssd_t *dnssd, int is_raop) {
     jclass mapClass = env->FindClass("java/util/HashMap");
+    if (!mapClass) return NULL;
     jmethodID mapInit = env->GetMethodID(mapClass, "<init>", "()V");
     jmethodID mapPut = env->GetMethodID(mapClass, "put",
         "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+    if (!mapInit || !mapPut) {
+        env->DeleteLocalRef(mapClass);
+        return NULL;
+    }
     jobject map = env->NewObject(mapClass, mapInit);
+    env->DeleteLocalRef(mapClass);
+    if (!map) return NULL;
 
     int count = is_raop ? android_dnssd_get_raop_txt_count(dnssd)
                         : android_dnssd_get_airplay_txt_count(dnssd);
@@ -290,14 +299,20 @@ static jobject _build_txt_map(JNIEnv *env, dnssd_t *dnssd, int is_raop) {
                                   : android_dnssd_get_airplay_txt_val(dnssd, i);
         if (key && val) {
             jstring jkey = env->NewStringUTF(key);
+            if (!jkey) break;
             jstring jval = env->NewStringUTF(val);
-            env->CallObjectMethod(map, mapPut, jkey, jval);
+            if (!jval) {
+                env->DeleteLocalRef(jkey);
+                break;
+            }
+            jobject prev = env->CallObjectMethod(map, mapPut, jkey, jval);
+            if (prev) env->DeleteLocalRef(prev);
             env->DeleteLocalRef(jkey);
             env->DeleteLocalRef(jval);
+            if (env->ExceptionCheck()) break;
         }
     }
 
-    env->DeleteLocalRef(mapClass);
     return map;
 }
 
@@ -349,8 +364,9 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeSetPlist(
         JNIEnv *env, jobject thiz, jlong handle, jstring key, jint value) {
 
     server_ctx_t *ctx = (server_ctx_t *)(intptr_t)handle;
-    if (!ctx || !ctx->raop) return;
+    if (!ctx || !ctx->raop || !key) return;
     const char *key_c = env->GetStringUTFChars(key, NULL);
+    if (!key_c) return;
     raop_set_plist(ctx->raop, key_c, value);
     env->ReleaseStringUTFChars(key, key_c);
 }
@@ -390,8 +406,9 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeSetLang(
         JNIEnv *env, jobject thiz, jlong handle, jstring lang) {
 
     server_ctx_t *ctx = (server_ctx_t *)(intptr_t)handle;
-    if (!ctx || !ctx->raop) return;
+    if (!ctx || !ctx->raop || !lang) return;
     const char *c = env->GetStringUTFChars(lang, NULL);
+    if (!c) return;
     raop_set_lang(ctx->raop, c);
     env->ReleaseStringUTFChars(lang, c);
 }

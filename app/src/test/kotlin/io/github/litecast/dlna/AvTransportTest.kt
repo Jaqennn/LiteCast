@@ -232,5 +232,47 @@ class AvTransportTest {
         setUri()
         av.action("Play", mapOf("Speed" to "2"))
         assertEquals("speed:2.0", host.calls.last())
+        av.onSnapshot(AvTransport.Snapshot(playWhenReady = true, ready = true, speed = 2f))
+        av.action("Play", mapOf("Speed" to "1"))
+        assertEquals("speed:1.0", host.calls.last())
+    }
+
+    @Test
+    fun staleInactiveAndSnapshotFromPreviousLoadDoNotCorruptNewLoad() {
+        setUri("http://cdn.example.com/a.mp4", "")
+        val loadA = av.currentLoadId()
+        av.action("Stop", emptyMap())
+        setUri("http://cdn.example.com/b.mp4", "")
+        val loadB = av.currentLoadId()
+        assertTrue(loadB > loadA)
+        // Late main-thread callback from Stop(A) arrives after SetAVTransportURI(B)
+        av.onInactive(loadA)
+        assertTrue(av.active)
+        // Late snapshot from A must not mark B as ready/playing
+        av.onSnapshot(AvTransport.Snapshot(positionMs = 30_000, durationMs = 60_000, playWhenReady = true, ready = true), loadA)
+        assertEquals("STOPPED", state())
+    }
+
+    @Test
+    fun dequeuedAutoPlayAfterStopDoesNotRestartPlayback() {
+        setUri()
+        val pendingTask = scheduler.tasks.single()
+        av.action("Stop", emptyMap())
+        // Simulate runnable already dequeued on main thread before cancel() ran
+        pendingTask.run()
+        assertEquals("STOPPED", state())
+        assertEquals("stop", host.calls.last())
+    }
+
+    @Test
+    fun rejectsLoopbackUris() {
+        for (bad in listOf("http://127.0.0.1:7000/master.m3u8", "http://localhost/a.mp4", "http://[::1]:8080/a.mp4", "http://0.0.0.0/a.mp4")) {
+            try {
+                setUri(bad, "")
+                fail("expected fault for $bad")
+            } catch (e: Dlna.Fault) {
+                assertEquals(714, e.code)
+            }
+        }
     }
 }

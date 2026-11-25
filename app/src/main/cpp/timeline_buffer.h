@@ -21,16 +21,16 @@ public:
         : mCapacity(capacitySamples), mBuf(new int16_t[capacitySamples]) {}
 
     size_t available() const {  // samples readable
-        return mWrite.load(std::memory_order_acquire) - mRead.load(std::memory_order_acquire);
+        return (size_t)(mWrite.load(std::memory_order_acquire) - mRead.load(std::memory_order_acquire));
     }
 
     // producer: push up to n samples, drops what doesn't fit
     size_t write(const int16_t *src, size_t n) {
-        const size_t w = mWrite.load(std::memory_order_relaxed);
-        const size_t r = mRead.load(std::memory_order_acquire);
-        const size_t freeSpace = mCapacity - (w - r);
+        const uint64_t w = mWrite.load(std::memory_order_relaxed);
+        const uint64_t r = mRead.load(std::memory_order_acquire);
+        const size_t freeSpace = mCapacity - (size_t)(w - r);
         if (n > freeSpace) n = freeSpace;
-        const size_t wi = w % mCapacity;
+        const size_t wi = (size_t)(w % mCapacity);
         const size_t first = (n < mCapacity - wi) ? n : (mCapacity - wi);
         memcpy(&mBuf[wi], src, first * sizeof(int16_t));
         if (n > first) memcpy(&mBuf[0], src + first, (n - first) * sizeof(int16_t));
@@ -39,19 +39,19 @@ public:
     }
 
     // Flush is requested by the producer; only the consumer moves the read head.
-    size_t writePosition() const { return mWrite.load(std::memory_order_acquire); }
-    void discardThrough(size_t boundary) {
-        const size_t r = mRead.load(std::memory_order_relaxed);
+    uint64_t writePosition() const { return mWrite.load(std::memory_order_acquire); }
+    void discardThrough(uint64_t boundary) {
+        const uint64_t r = mRead.load(std::memory_order_relaxed);
         if (boundary > r) mRead.store(boundary, std::memory_order_release);
     }
 
     // consumer: pop up to n samples
     size_t read(int16_t *dst, size_t n) {
-        const size_t r = mRead.load(std::memory_order_relaxed);
-        const size_t w = mWrite.load(std::memory_order_acquire);
-        const size_t avail = w - r;
+        const uint64_t r = mRead.load(std::memory_order_relaxed);
+        const uint64_t w = mWrite.load(std::memory_order_acquire);
+        const size_t avail = (size_t)(w - r);
         if (n > avail) n = avail;
-        const size_t ri = r % mCapacity;
+        const size_t ri = (size_t)(r % mCapacity);
         const size_t first = (n < mCapacity - ri) ? n : (mCapacity - ri);
         memcpy(dst, &mBuf[ri], first * sizeof(int16_t));
         if (n > first) memcpy(dst + first, &mBuf[0], (n - first) * sizeof(int16_t));
@@ -61,9 +61,9 @@ public:
 
     // consumer: discard up to n oldest samples
     void skip(size_t n) {
-        const size_t r = mRead.load(std::memory_order_relaxed);
-        const size_t w = mWrite.load(std::memory_order_acquire);
-        const size_t avail = w - r;
+        const uint64_t r = mRead.load(std::memory_order_relaxed);
+        const uint64_t w = mWrite.load(std::memory_order_acquire);
+        const size_t avail = (size_t)(w - r);
         if (n > avail) n = avail;
         mRead.store(r + n, std::memory_order_release);
     }
@@ -71,8 +71,8 @@ public:
 private:
     const size_t mCapacity;
     std::unique_ptr<int16_t[]> mBuf;
-    std::atomic<size_t> mWrite{0};
-    std::atomic<size_t> mRead{0};
+    std::atomic<uint64_t> mWrite{0};
+    std::atomic<uint64_t> mRead{0};
 };
 
 /*
@@ -105,8 +105,8 @@ public:
         int64_t rel = raw - mBaseNs;
         if (rel < 0) rel = 0;
 
-        int bin = (int)(rel / BUCKET_NS);
-        if (bin >= NBUCKETS) bin = NBUCKETS - 1;
+        int64_t bin64 = rel / BUCKET_NS;
+        int bin = (bin64 >= NBUCKETS) ? (NBUCKETS - 1) : (int)bin64;
 
         // decay: each bin bleeds 1/2^FORGET_SHIFT per packet, current bin topped up by
         // ONE/2^FORGET_SHIFT, so total converges to ONE
@@ -240,15 +240,15 @@ public:
         const int64_t durNs = samples * NS_PER_SEC / mChannels / mSampleRate;
 
         // consumer underran since last write: it already played the gap as real-time
-        // silence, re-anchor so we don't also insert it here
-        if (mUnderran.exchange(false, std::memory_order_relaxed)) {
+        // silence, re-anchor so we don't also insert it here, and reset the jitter
+        // tracker baseline so a clock shift or pause gap doesn't poison mBaseNs
+        const bool underran = mUnderran.exchange(false, std::memory_order_relaxed);
+        const int64_t rawGapNs = ptsNs - mExpectedPtsNs;
+        if (underran || rawGapNs > MAX_GAP_NS || rawGapNs < -MAX_GAP_NS) mTracker.reanchor();
+        if (underran) {
             mExpectedPtsNs = ptsNs;
         }
         const int64_t gapNs = ptsNs - mExpectedPtsNs;
-
-        // large gap: possible discontinuity or clock shift. reanchor() must precede
-        // observe() so the reset applies to this observation
-        if (gapNs > MAX_GAP_NS || gapNs < -MAX_GAP_NS) mTracker.reanchor();
 
         // no-op in static-cushion mode
         mTracker.observe(ptsNs, monoNs(), durNs);
@@ -281,7 +281,7 @@ public:
 
     // consumer: pop frames*channels samples into out, silence-padded on underrun
     void read(int16_t *out, int32_t frames) {
-        const size_t boundary = mFlushThrough.load(std::memory_order_acquire);
+        const uint64_t boundary = mFlushThrough.load(std::memory_order_acquire);
         if (boundary != mAppliedFlush) {
             mRing.discardThrough(boundary);
             mAppliedFlush = boundary;
@@ -404,8 +404,8 @@ private:
     const int mChannels;
     DelayTracker mTracker;               // owns cushion policy; read live each read()
     SpscRing mRing;
-    std::atomic<size_t> mFlushThrough{0};
-    size_t mAppliedFlush = 0; // consumer-only
+    std::atomic<uint64_t> mFlushThrough{0};
+    uint64_t mAppliedFlush = 0; // consumer-only
     TimelineMetrics mMetrics;
     bool mPriming = true;                // stream start: buffer output to build cushion
     uint32_t mPrimeSilenceFrames = 0;    // consumer-only: silence frames output while priming with partial data

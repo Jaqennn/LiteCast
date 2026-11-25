@@ -1,0 +1,173 @@
+diff --git a/lib/airplay_video.c b/lib/airplay_video.c
+index 6f0d797..a5e838a 100644
+--- a/lib/airplay_video.c
++++ b/lib/airplay_video.c
+@@ -29,6 +29,15 @@
+ #include "airplay_video.h"
+ 
+ #define MEDIA_PLAYLIST_REFRESH_SECS 5
++#define MEDIA_PLAYLIST_FETCH_TIMEOUT_SECS 15
++
++static time_t _monotonic_secs(void) {
++    struct timespec ts;
++    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
++        return ts.tv_sec;
++    }
++    return time(NULL);
++}
+ 
+ typedef enum playlist_type_e {
+     NONE,
+@@ -48,6 +57,7 @@ struct media_item_s {
+     int media_sequence;
+     bool fetch_pending;
+     time_t last_fetched;
++    time_t fetch_started_at;
+ };
+ 
+ struct airplay_video_s {
+@@ -604,11 +614,16 @@ void create_media_data_store(airplay_video_t * airplay_video, char ** uri_list,
+ }
+ 
+ void set_initial_fetch_complete(airplay_video_t *airplay_video) {
++    pthread_mutex_lock(&airplay_video->media_data_store_lock);
+     airplay_video->initial_fetch_complete = true;
++    pthread_mutex_unlock(&airplay_video->media_data_store_lock);
+ }
+ 
+ bool get_initial_fetch_complete(airplay_video_t *airplay_video) {
+-    return airplay_video->initial_fetch_complete;
++    pthread_mutex_lock(&airplay_video->media_data_store_lock);
++    bool complete = airplay_video->initial_fetch_complete;
++    pthread_mutex_unlock(&airplay_video->media_data_store_lock);
++    return complete;
+ }
+ 
+ 
+@@ -687,23 +702,26 @@ int store_media_playlist(airplay_video_t *airplay_video, char * media_playlist,
+     free(media_item->playlist);
+     media_item->playlist = media_playlist;
+     media_item->fetch_pending = false;
++    media_item->fetch_started_at = 0;
+     media_item->count = *count;
+     media_item->duration = *duration;
+     media_item->endlist = *endlist;
+-    media_item->last_fetched = time(NULL);
++    media_item->last_fetched = _monotonic_secs();
+     parse_media_playlist(media_item);
+     pthread_mutex_unlock(&airplay_video->media_data_store_lock);
+     return 0;
+ }
+ 
+-char * get_media_playlist(airplay_video_t *airplay_video, int *count, float *duration, const char *uri, bool *should_fetch, const char **remote_uri) {
++char * get_media_playlist(airplay_video_t *airplay_video, int *count, float *duration, const char *uri, bool *should_fetch, char **remote_uri) {
+     *should_fetch = false;
++    *remote_uri = NULL;
+     pthread_mutex_lock(&airplay_video->media_data_store_lock);
+     media_item_t *media_data_store = airplay_video->media_data_store;
+     if (media_data_store == NULL) {
+         pthread_mutex_unlock(&airplay_video->media_data_store_lock);
+         return NULL;
+     }
++    time_t now = _monotonic_secs();
+     for (int i = 0; i < airplay_video->num_uri; i++) {
+         if (strstr(media_data_store[i].uri, uri)) {
+             media_item_t *item = &media_data_store[media_data_store[i].num];
+@@ -714,12 +732,16 @@ char * get_media_playlist(airplay_video_t *airplay_video, int *count, float *dur
+                 *duration = item->duration;
+                 copy = _raw_copy_playlist(item->playlist);
+                 stale = !item->endlist &&
+-                        time(NULL) - item->last_fetched >= MEDIA_PLAYLIST_REFRESH_SECS;
++                        now - item->last_fetched >= MEDIA_PLAYLIST_REFRESH_SECS;
++            }
++            if (item->fetch_pending && now - item->fetch_started_at >= MEDIA_PLAYLIST_FETCH_TIMEOUT_SECS) {
++                item->fetch_pending = false;
+             }
+             if (stale && !item->fetch_pending) {
+                 item->fetch_pending = true;
++                item->fetch_started_at = now;
+                 *should_fetch = true;
+-                *remote_uri = item->uri;
++                *remote_uri = _raw_copy_playlist(item->uri);
+             }
+             pthread_mutex_unlock(&airplay_video->media_data_store_lock);
+             return copy;
+diff --git a/lib/airplay_video.h b/lib/airplay_video.h
+index 77fdcb0..67410bf 100644
+--- a/lib/airplay_video.h
++++ b/lib/airplay_video.h
+@@ -62,7 +62,7 @@ void store_master_playlist(airplay_video_t *airplay_video, char *master_playlist
+ char *select_master_playlist_language(airplay_video_t *airplay_video, char *master_playlist);
+ int store_media_playlist(airplay_video_t *airplay_video, char *media_playlist, int *count, float *duration, bool*endlist, int num);
+ char *get_master_playlist(airplay_video_t *airplay_video);
+-char *get_media_playlist(airplay_video_t *airplay_video, int *count, float *duration, const char *uri, bool *should_fetch, const char **remote_uri);
++char *get_media_playlist(airplay_video_t *airplay_video, int *count, float *duration, const char *uri, bool *should_fetch, char **remote_uri);
+ 
+ void destroy_media_data_store(airplay_video_t *airplay_video);
+ void create_media_data_store(airplay_video_t * airplay_video, char ** media_data_store, int num_uri);
+diff --git a/lib/http_handlers.h b/lib/http_handlers.h
+index 586f61e..b0adae4 100644
+--- a/lib/http_handlers.h
++++ b/lib/http_handlers.h
+@@ -842,7 +842,7 @@ http_handler_play(raop_conn_t *conn, http_request_t *request, http_response_t *r
+     }
+ 
+     if (!playback_uuid) {
+-        playback_uuid = strdup(apple_session_id);
++        playback_uuid = strdup(playback_location);
+     }
+ 
+ #if 0
+@@ -880,6 +880,7 @@ http_handler_play(raop_conn_t *conn, http_request_t *request, http_response_t *r
+         raop->callbacks.on_video_play(raop->callbacks.cls,
+                                       get_playback_location(airplay_video),
+                                       resume_pos > start_pos ? resume_pos : start_pos);
++        raop->video_play_conn = (void *) conn;
+         return;
+     }
+     
+@@ -997,6 +998,9 @@ http_handler_play(raop_conn_t *conn, http_request_t *request, http_response_t *r
+     }
+     if (id >= 0 && raop->airplay_video[id] && !get_playback_location(raop->airplay_video[id])) {
+         raop_destroy_airplay_video(raop, id);
++        if (raop->current_video == id) {
++            raop->current_video = -1;
++        }
+     }
+     logger_log(raop->logger, LOGGER_ERR, "Could not find valid Plist Data for POST/play request, Unhandled");
+     http_response_init(response, "HTTP/1.1", 400, "Bad Request");
+@@ -1047,7 +1051,7 @@ http_handler_hls(raop_conn_t *conn,  http_request_t *request, http_response_t *r
+         int chunks = 0;
+         float duration = 0.0f;
+         bool should_fetch = false;
+-        const char *remote_uri = NULL;
++        char *remote_uri = NULL;
+         char *media_playlist = get_media_playlist(airplay_video, &chunks, &duration, url, &should_fetch, &remote_uri);
+         if (media_playlist) {
+             char *data  = adjust_yt_condensed_playlist(media_playlist);
+@@ -1059,10 +1063,11 @@ http_handler_hls(raop_conn_t *conn,  http_request_t *request, http_response_t *r
+         } else {
+             logger_log(raop->logger, LOGGER_ERR,"requested media playlist %s not found", url); 
+         }
+-        if (should_fetch) {
++        if (should_fetch && remote_uri) {
+             fcup_request((void *) conn, remote_uri, get_apple_session_id(airplay_video),
+                          get_next_FCUP_RequestID(airplay_video));
+         }
++        free(remote_uri);
+     }
+ 
+     http_response_add_header(response, "Access-Control-Allow-Headers", "Content-type");
+diff --git a/lib/raop_handlers.h b/lib/raop_handlers.h
+index b3f3b17..95d2272 100644
+--- a/lib/raop_handlers.h
++++ b/lib/raop_handlers.h
+@@ -358,7 +358,7 @@ raop_handler_pairsetup_pin(raop_conn_t *conn,
+         uint64_t client_proof_len = 0;
+         plist_get_data_val(req_pk_node, &client_pk, &client_pk_len); 
+         plist_get_data_val(req_proof_node, &client_proof, &client_proof_len);
+-        if (client_proof_len > sizeof(proof)) {
++        if (client_proof_len == 0 || client_proof_len > sizeof(proof) || !client_proof || !client_pk) {
+             logger_log(raop->logger, LOGGER_ERR, "Client Authentication Failure (client_proof_len %d invalid)", (int) client_proof_len);
+             free (client_proof);
+             free (client_pk);

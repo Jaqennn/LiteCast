@@ -20,6 +20,7 @@ class BootReceiver : BroadcastReceiver() {
         if (!prefs[Prefs.BOOT_AUTO_START]) return
         if (!prefs.getBoolean(LiteCast.PREF_RECEIVER_ENABLED, true)) return
         if (Diagnostics.needsRecovery()) return
+        if (!context.hasLocalNetwork()) return
 
         val serviceIntent = Intent(context, AirPlayService::class.java)
             .setAction(AirPlayService.ACTION_START_SERVER)
