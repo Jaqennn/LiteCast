@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.6
+
+- Native & UxPlay: prevented 32-bit signed negative OOB writes in `DelayTracker::observe()` and re-anchored on underrun; switched `SpscRing`/`TimelineBuffer` flush counters to `uint64_t` (fixes 13.5h wraparound on 32-bit ARM TVs); switched `_video_wait_ready()` to `CLOCK_MONOTONIC` and woke waiters in `nativeStop()` to prevent 10s shutdown ANRs; fixed Oboe AB-BA deadlock and stale error callbacks; bounded `LatencyProbe` and float PCM clamping; hardened JNI callbacks; added UxPlay patch `0010` fixing live HLS refresh stalls, consecutive `/play` UUID reuse, and empty PIN proof UB.
+- DLNA & Networking: fixed chunked HTTP signed-int overflow OOM, unbounded trailers, GENA subscription race, `Expect: 100-continue`, and `HEAD` 404 body; fixed MP4/fMP4 sniffing misclassification as XML/JSON; bounded XML nesting depth, filtered invalid XML 1.0 control characters, and matched media `<res>` MIME; added `AvTransport` generation `loadId`, `autoPlayArmed`, speed reset to `1.0x`, `Locale.ROOT`, and loopback URI rejection; fixed `DlnaRenderer` offline startup status, `SsdpServer` fallback socket leak, and full IPv6 literal matching in `LanProxyBypass`.
+- Service, Diagnostics & TV UI: preserved native trace breadcrumbs on interrupted startup crashes; cleared stale AirPlay PIN on disconnect, video play, DLNA start, and shutdown; fixed AirPlay music progress jump on pause; fixed AirPlay/DLNA mutual exclusion, main-thread video callback races, atomic connection counting, fixed-volume division by zero, and Android 12+/17+ FGS/local-network permission handling.
+- Renderers & Discovery: fixed static-start black screen on `INFO_OUTPUT_FORMAT_CHANGED`, PTS re-anchoring, software decoder fallback, pre-display GL transform matrix (upside-down first frame), synchronous surface detachment, live stream `C.TIME_UNSET` start position, IPv6 DACP control, bounded `DmapParser` recursion, Wi-Fi-less `NsdServiceManager` startup, and USB mDNS reconnect recovery.
+
 ## 0.2.5
 
 - Fixed the player crash when a receiver disconnects while Compose still holds an active playback flag. Receiver changes now replace the remembered session, nullable collectors reset immediately and media views require a live service.
