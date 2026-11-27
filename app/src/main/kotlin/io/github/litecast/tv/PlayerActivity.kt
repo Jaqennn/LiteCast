@@ -179,11 +179,11 @@ private enum class Mode { PIN, VIDEO, MIRROR, MUSIC, PREPARING, IDLE }
 internal fun PlayerScreen(
     svc: AirPlayService?,
     pin: String?,
-    onFinish: () -> Unit,
     surfaceVisible: Boolean = true,
     onSurfaceReady: () -> Unit = {},
     onSurfaceGone: () -> Unit = {},
     onSurfaceView: (SurfaceView?) -> Unit = {},
+    onFinish: () -> Unit,
 ) {
     // An unbound/replaced receiver owns a different session, including remembered
     // playback, pending polls, surfaces and seek state.
