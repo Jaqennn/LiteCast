@@ -197,6 +197,8 @@ class AirPlayVideoPlayer(private val context: Context) {
 
     fun stop() = mainHandler.post { _stopInternal(reportStopped = true) }
 
+    fun stopSync() = _runOnMain { _stopInternal(reportStopped = true) }
+
     private fun _stopInternal(reportStopped: Boolean) {
         mainHandler.removeCallbacks(_reportTick)
         player?.let {

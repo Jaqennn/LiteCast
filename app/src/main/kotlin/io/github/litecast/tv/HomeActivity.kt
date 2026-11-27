@@ -5,6 +5,7 @@
 
 package io.github.litecast.tv
 
+import android.annotation.SuppressLint
 import android.os.Build
 import android.Manifest
 import android.content.Context
@@ -12,6 +13,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -502,6 +504,7 @@ internal data class SettingsUi(
     val canPopUp: Boolean,
     val pin: Boolean,
     val version: String,
+    val popupPermissionRequired: Boolean = true,
 )
 
 @Composable
@@ -521,7 +524,15 @@ private fun SettingsScreen(svc: AirPlayService?, onFeedback: () -> Unit) {
         (dlnaState != DlnaRenderer.Status.STOPPED && svc?.isReceiverActive == true)
 
     SettingsContent(
-        ui = SettingsUi(running, dlna, boot, canPopUp, pin, LiteCast.versionName(context)),
+        ui = SettingsUi(
+            receiverOn = running,
+            dlna = dlna,
+            boot = boot,
+            canPopUp = canPopUp,
+            pin = pin,
+            version = LiteCast.versionName(context),
+            popupPermissionRequired = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q,
+        ),
         onToggleReceiver = { if (running) svc?.stopServer() else svc?.startServer() },
         onToggleDlna = { svc?.setDlnaEnabled(!dlna) ?: prefs.edit { putBoolean(LiteCast.PREF_DLNA_ENABLED, !dlna) } },
         onToggleBoot = { prefs.edit { putBoolean(Prefs.BOOT_AUTO_START.key, !boot) } },
@@ -574,9 +585,18 @@ internal fun SettingsContent(
                     flag(ui.receiverOn), ui.receiverOn, Modifier.focusRequester(first), onToggleReceiver)
                 SettingRow(stringResource(R.string.lc_setting_dlna), stringResource(R.string.lc_setting_dlna_desc), flag(ui.dlna), ui.dlna, onClick = onToggleDlna)
                 SettingRow(stringResource(R.string.lc_setting_boot), stringResource(R.string.lc_setting_boot_desc), flag(ui.boot), ui.boot, onClick = onToggleBoot)
-                SettingRow(stringResource(R.string.lc_setting_popup),
-                    stringResource(if (ui.canPopUp) R.string.lc_setting_popup_on else R.string.lc_setting_popup_off),
-                    flag(ui.canPopUp), ui.canPopUp, onClick = onPopUp)
+                val popupDesc = when {
+                    !ui.popupPermissionRequired -> stringResource(R.string.lc_setting_popup_not_needed)
+                    ui.canPopUp -> stringResource(R.string.lc_setting_popup_on)
+                    else -> stringResource(R.string.lc_setting_popup_off)
+                }
+                SettingRow(
+                    stringResource(R.string.lc_setting_popup),
+                    popupDesc,
+                    flag(ui.canPopUp),
+                    ui.canPopUp,
+                    onClick = if (ui.popupPermissionRequired) onPopUp else ({}),
+                )
                 SettingRow(stringResource(R.string.lc_setting_pin), stringResource(R.string.lc_setting_pin_desc), flag(ui.pin), ui.pin, onClick = onTogglePin)
                 SettingRow(stringResource(R.string.lc_setting_advanced), stringResource(R.string.lc_setting_advanced_desc), null, onClick = onAdvanced)
                 SettingRow(stringResource(R.string.lc_setting_feedback), stringResource(R.string.lc_setting_feedback_desc), null, onClick = onFeedback)
@@ -589,10 +609,16 @@ internal fun SettingsContent(
 
 // ---------------------------------------------------------------------------------------- helpers
 
-// Before Android 6.0 the permission is granted when the app is installed
-internal fun canDrawOverlays(context: Context): Boolean = Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(context)
+// Background Activity launch (BAL) restrictions started in Android 10 (API 29).
+// Below API 29, SYSTEM_ALERT_WINDOW is not needed for casts to pop up automatically.
+internal fun canDrawOverlays(
+    context: Context,
+    sdkInt: Int = Build.VERSION.SDK_INT,
+    overlayGranted: () -> Boolean = { Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(context) },
+): Boolean = sdkInt < Build.VERSION_CODES.Q || overlayGranted()
 
-internal fun openOverlaySettings(context: Context) {
+@SuppressLint("QueryPermissionsNeeded")
+internal fun openOverlaySettings(context: Context): Boolean {
     val pkg = Uri.parse("package:${context.packageName}")
     val candidates = listOf(
         Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, pkg),
@@ -600,9 +626,18 @@ internal fun openOverlaySettings(context: Context) {
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
         Intent(Settings.ACTION_SETTINGS),
     )
+    val pm = context.packageManager
     for (intent in candidates) {
-        if (runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess) return
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (intent.resolveActivity(pm) == null) continue
+        if (runCatching { context.startActivity(intent) }.isSuccess) return true
     }
+    Toast.makeText(
+        context,
+        context.getString(R.string.lc_overlay_open_failed, context.packageName),
+        Toast.LENGTH_LONG,
+    ).show()
+    return false
 }
 
 private fun lanIp(context: Context): String {

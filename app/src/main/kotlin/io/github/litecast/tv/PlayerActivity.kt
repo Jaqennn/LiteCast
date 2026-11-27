@@ -8,8 +8,11 @@ package io.github.litecast.tv
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.KeyEvent
+import android.view.SurfaceView
+import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.lifecycle.Lifecycle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
@@ -87,6 +90,9 @@ class PlayerActivity : ComponentActivity() {
     private val binding = ServiceBinding(this)
     private val pin = mutableStateOf<String?>(null)
     private val pinCallback: (String?) -> Unit = { value -> runOnUiThread { pin.value = value } }
+    private val surfaceVisible = mutableStateOf(true)
+    private var activeSurfaceView: SurfaceView? = null
+    private var visualReleased = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,10 +102,26 @@ class PlayerActivity : ComponentActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
-        binding.onConnected = { svc -> svc.pinCallback = pinCallback }
+        binding.onConnected = { svc ->
+            svc.pinCallback = pinCallback
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                svc.onPlayerResumed()
+            }
+            if (hasWindowFocus()) {
+                svc.onPlayerWindowFocusChanged(true)
+            }
+        }
         setContent {
             LiteCastTheme {
-                PlayerScreen(binding.service.value, pin.value, onFinish = ::finish)
+                PlayerScreen(
+                    svc = binding.service.value,
+                    pin = pin.value,
+                    onFinish = ::finish,
+                    surfaceVisible = surfaceVisible.value,
+                    onSurfaceReady = { binding.service.value?.onPlayerSurfaceReady() },
+                    onSurfaceGone = { binding.service.value?.onPlayerSurfaceDestroyed() },
+                    onSurfaceView = { activeSurfaceView = it },
+                )
             }
         }
     }
@@ -109,24 +131,75 @@ class PlayerActivity : ComponentActivity() {
         binding.bind()
     }
 
+    override fun onResume() {
+        super.onResume()
+        visualReleased = false
+        surfaceVisible.value = true
+        binding.service.value?.onPlayerResumed()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        binding.service.value?.onPlayerWindowFocusChanged(hasFocus)
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        releaseVisualSessionIfNeeded()
+    }
+
+    override fun onPause() {
+        releaseVisualSessionIfNeeded()
+        super.onPause()
+    }
+
     override fun onStop() {
         binding.service.value?.let { if (it.pinCallback === pinCallback) it.pinCallback = null }
         binding.unbind()
         super.onStop()
+    }
+
+    private fun releaseVisualSessionIfNeeded() {
+        if (visualReleased) return
+        val svc = binding.service.value ?: return
+        // Pure AirPlay MUSIC is allowed to continue in the background until permanent AUDIOFOCUS_LOSS.
+        if (!svc.mirroringActive.value && !svc.videoPlaybackActive.value) return
+        visualReleased = true
+        svc.releaseVisualSessionSync()
+        activeSurfaceView?.visibility = View.GONE
+        activeSurfaceView = null
+        surfaceVisible.value = false
+        if (!isFinishing) finish()
     }
 }
 
 private enum class Mode { PIN, VIDEO, MIRROR, MUSIC, PREPARING, IDLE }
 
 @Composable
-internal fun PlayerScreen(svc: AirPlayService?, pin: String?, onFinish: () -> Unit) {
+internal fun PlayerScreen(
+    svc: AirPlayService?,
+    pin: String?,
+    onFinish: () -> Unit,
+    surfaceVisible: Boolean = true,
+    onSurfaceReady: () -> Unit = {},
+    onSurfaceGone: () -> Unit = {},
+    onSurfaceView: (SurfaceView?) -> Unit = {},
+) {
     // An unbound/replaced receiver owns a different session, including remembered
     // playback, pending polls, surfaces and seek state.
-    key(svc) { PlayerSession(svc, pin, onFinish) }
+    key(svc) { PlayerSession(svc, pin, onFinish, surfaceVisible, onSurfaceReady, onSurfaceGone, onSurfaceView) }
 }
 
 @Composable
-private fun PlayerSession(svc: AirPlayService?, pin: String?, onFinish: () -> Unit) {
+private fun PlayerSession(
+    svc: AirPlayService?,
+    pin: String?,
+    onFinish: () -> Unit,
+    surfaceVisible: Boolean,
+    onSurfaceReady: () -> Unit,
+    onSurfaceGone: () -> Unit,
+    onSurfaceView: (SurfaceView?) -> Unit,
+) {
     val video = svc?.videoPlaybackActive.collectOr(false)
     val mirroring = svc?.mirroringActive.collectOr(false)
     val music = svc?.audioOnly.collectOr(false)
@@ -160,8 +233,8 @@ private fun PlayerSession(svc: AirPlayService?, pin: String?, onFinish: () -> Un
         val receiver = svc ?: return@Box
         when (mode) {
             Mode.PIN -> PinView(pin.orEmpty())
-            Mode.VIDEO -> VideoView(receiver, onFinish)
-            Mode.MIRROR -> MirrorView(receiver, onFinish)
+            Mode.VIDEO -> VideoView(receiver, onFinish, surfaceVisible, onSurfaceView)
+            Mode.MIRROR -> MirrorView(receiver, onFinish, surfaceVisible, onSurfaceReady, onSurfaceGone, onSurfaceView)
             Mode.MUSIC -> MusicView(receiver, onFinish)
             Mode.PREPARING -> Waiting(stringResource(R.string.lc_player_preparing))
             Mode.IDLE -> Unit
@@ -172,7 +245,12 @@ private fun PlayerSession(svc: AirPlayService?, pin: String?, onFinish: () -> Un
 // ------------------------------------------------------------------------------------ video
 
 @Composable
-private fun VideoView(svc: AirPlayService, onFinish: () -> Unit) {
+private fun VideoView(
+    svc: AirPlayService,
+    onFinish: () -> Unit,
+    surfaceVisible: Boolean,
+    onSurfaceView: (SurfaceView?) -> Unit,
+) {
     val aspect = svc.videoPlaybackAspect.collectOr(16f / 9f)
     val info = svc.videoPlaybackInfo.collectOr(VideoPlaybackInfo())
     val title = svc.videoTitle.collectOr("")
@@ -246,11 +324,14 @@ private fun VideoView(svc: AirPlayService, onFinish: () -> Unit) {
             },
         contentAlignment = Alignment.Center,
     ) {
-        VideoSurfaceView(
-            onSurfaceAvailable = { svc.setVideoPlaybackSurface(it) },
-            onSurfaceDestroyed = { svc.clearVideoPlaybackSurface(it) },
-            aspectRatio = aspect,
-        )
+        if (surfaceVisible) {
+            VideoSurfaceView(
+                onSurfaceAvailable = { svc.setVideoPlaybackSurface(it) },
+                onSurfaceDestroyed = { svc.clearVideoPlaybackSurface(it) },
+                aspectRatio = aspect,
+                onSurfaceView = onSurfaceView,
+            )
+        }
 
         if (error != null) {
             ErrorCard(error, fatal = errorFatal)
@@ -398,7 +479,14 @@ internal fun ErrorCard(message: String, fatal: Boolean = false) {
 // ------------------------------------------------------------------------------------ mirroring
 
 @Composable
-private fun MirrorView(svc: AirPlayService, onFinish: () -> Unit) {
+private fun MirrorView(
+    svc: AirPlayService,
+    onFinish: () -> Unit,
+    surfaceVisible: Boolean,
+    onSurfaceReady: () -> Unit,
+    onSurfaceGone: () -> Unit,
+    onSurfaceView: (SurfaceView?) -> Unit,
+) {
     val aspect = svc.videoAspect.collectOr(16f / 9f)
     var hintUntil by remember { mutableLongStateOf(SystemClock.elapsedRealtime() + 3000) }
     var backArmedUntil by remember { mutableLongStateOf(0L) }
@@ -408,7 +496,7 @@ private fun MirrorView(svc: AirPlayService, onFinish: () -> Unit) {
     BackHandler {
         val t = SystemClock.elapsedRealtime()
         if (t < backArmedUntil) {
-            svc.disconnectClients()
+            svc.releaseVisualSessionSync()
             onFinish()
         } else {
             backArmedUntil = t + 2500
@@ -416,11 +504,20 @@ private fun MirrorView(svc: AirPlayService, onFinish: () -> Unit) {
     }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        VideoSurfaceView(
-            onSurfaceAvailable = { svc.setVideoSurface(it) },
-            onSurfaceDestroyed = { svc.clearVideoSurface(it) },
-            aspectRatio = aspect,
-        )
+        if (surfaceVisible) {
+            VideoSurfaceView(
+                onSurfaceAvailable = {
+                    svc.setVideoSurface(it)
+                    onSurfaceReady()
+                },
+                onSurfaceDestroyed = {
+                    svc.clearVideoSurface(it)
+                    onSurfaceGone()
+                },
+                aspectRatio = aspect,
+                onSurfaceView = onSurfaceView,
+            )
+        }
         AnimatedVisibility(now < hintUntil, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopStart)) {
             MirrorBadge()
         }

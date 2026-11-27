@@ -48,6 +48,8 @@
     <string name="lc_setting_popup">Pop up when a cast starts</string>
     <string name="lc_setting_popup_on">Allowed</string>
     <string name="lc_setting_popup_off">Not allowed yet — opens the system setting</string>
+    <string name="lc_setting_popup_not_needed">Not needed on this Android version — casts pop up automatically</string>
+    <string name="lc_overlay_open_failed">This TV has no overlay permission settings screen. Run via ADB: adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
     <string name="lc_setting_pin">Ask for a PIN (AirPlay)</string>
     <string name="lc_setting_pin_desc">New devices must enter a code shown on the TV</string>
     <string name="lc_setting_advanced">Advanced</string>

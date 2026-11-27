@@ -147,12 +147,13 @@ private:
             ->setDataCallback(mCallbacks)
             ->setErrorCallback(mCallbacks);
         if (mLowLatency) {
-            // game use case may enable extra latency optimizations
-            b.setPerformanceMode(oboe::PerformanceMode::LowLatency)->setUsage(oboe::Usage::Game);
+            // LiteCast: align Usage::Media with Android AudioFocus USAGE_MEDIA (avoids Game/TV HAL conflict)
+            b.setPerformanceMode(oboe::PerformanceMode::LowLatency)->setUsage(oboe::Usage::Media);
         } else {
             // media use case may have better quality and lower power
             b.setPerformanceMode(oboe::PerformanceMode::PowerSaving)->setUsage(oboe::Usage::Media);
         }
+        litecast_trace("audio.output.open.begin");
         oboe::Result r = b.openStream(mStream);
         if (r != oboe::Result::OK) {
             mLog->error("Failed to open Oboe stream: %s", oboe::convertToText(r));

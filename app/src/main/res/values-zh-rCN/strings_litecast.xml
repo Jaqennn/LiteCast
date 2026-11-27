@@ -47,6 +47,8 @@
     <string name="lc_setting_popup">投屏时自动弹出画面</string>
     <string name="lc_setting_popup_on">已允许</string>
     <string name="lc_setting_popup_off">还没有允许，点击打开系统设置</string>
+    <string name="lc_setting_popup_not_needed">当前安卓版本无需额外授权，投屏会自动弹出</string>
+    <string name="lc_overlay_open_failed">这台电视没有自带悬浮窗权限设置页，可用电脑执行：adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
     <string name="lc_setting_pin">AirPlay 需要配对码</string>
     <string name="lc_setting_pin_desc">新设备连接时需输入电视上显示的配对码</string>
     <string name="lc_setting_advanced">高级设置</string>

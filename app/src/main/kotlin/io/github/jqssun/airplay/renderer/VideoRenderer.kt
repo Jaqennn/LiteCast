@@ -11,6 +11,9 @@ import io.github.jqssun.airplay.renderer.DecoderSelector.Companion.videoCaps
 class VideoRenderer(ctx: Context) {
 
     private val lock = Object()
+    private val gateLock = Object()
+    private val surfaceLock = Object()
+    private val gate = MirrorFrameGate()
     private val pipeline = VideoPipeline()
     private val retryExecutor = java.util.concurrent.ScheduledThreadPoolExecutor(1).apply {
         setKeepAliveTime(5, java.util.concurrent.TimeUnit.SECONDS)
@@ -21,7 +24,7 @@ class VideoRenderer(ctx: Context) {
     var recoveryFailedCallback: (() -> Unit)? = null
     private val recovery = VideoStartRecovery<PendingFrame>(
         schedule = { delay, task ->
-            retryExecutor.schedule({ synchronized(lock) { task() } }, delay,
+            retryExecutor.schedule({ synchronized(lock) { if (!teardownRequested) task() } }, delay,
                 java.util.concurrent.TimeUnit.MILLISECONDS)
         },
         recover = { frames ->
@@ -45,11 +48,13 @@ class VideoRenderer(ctx: Context) {
     private var hevcDecoder: MediaCodecInfo? = null
     private var maxFps = 0
     private var codec: MediaCodec? = null
-    private var displaySurface: Surface? = null
+    @Volatile private var displaySurface: Surface? = null
+    @Volatile private var teardownRequested = false
     private var currentH265 = false
     private var videoWidth = 0
     private var videoHeight = 0
     private var firstFrameQueued = false
+    private var firstOutputEmitted = false
 
     // stats
     @Volatile var fps = 0; private set
@@ -85,12 +90,12 @@ class VideoRenderer(ctx: Context) {
     }
 
     // doesn't restart codec; decoder renders into pipeline's own persistent surface
-    fun setSurface(surface: Surface) = synchronized(lock) {
+    fun setSurface(surface: Surface) = synchronized(surfaceLock) {
         displaySurface = surface
         pipeline.setDisplaySurface(surface)
     }
 
-    fun clearSurface(surface: Surface) = synchronized(lock) {
+    fun clearSurface(surface: Surface) = synchronized(surfaceLock) {
         if (displaySurface !== surface) return@synchronized
         displaySurface = null
         pipeline.setDisplaySurface(null)
@@ -113,10 +118,51 @@ class VideoRenderer(ctx: Context) {
             }
             .reduceOrNull { (w1, h1), (w2, h2) -> minOf(w1, w2) to minOf(h1, h2) } ?: (1920 to 1080)
 
-    // codec per mirror session; pipeline persists across sessions
-    fun startSession() = synchronized(lock) { recovery.cancel(); stopCodec(); _resetStats() }
+    // codec per mirror session; pipeline persists across sessions unless released on foreground exit
+    fun startSession() {
+        teardownRequested = false
+        synchronized(gateLock) { gate.openImmediate() }
+        synchronized(lock) { recovery.cancel(); stopCodec(); _resetStats() }
+    }
 
-    fun stopSession() = synchronized(lock) { recovery.cancel(); stopCodec() }
+    fun armSessionGate() {
+        teardownRequested = false
+        synchronized(gateLock) { gate.armGate() }
+        synchronized(lock) { recovery.cancel(); stopCodec(); _resetStats() }
+    }
+
+    fun beginTeardown() {
+        teardownRequested = true
+        synchronized(gateLock) { gate.beginTeardown() }
+    }
+
+    fun openGateAndFlush() {
+        synchronized(lock) {
+            if (teardownRequested) return
+            val buffered = synchronized(gateLock) { gate.openAndDrain() }
+            for (frame in buffered) {
+                if (teardownRequested) return
+                _feedFrameLocked(frame.data, frame.ptsNs, frame.isH265)
+            }
+        }
+    }
+
+    fun stopSession() {
+        teardownRequested = true
+        synchronized(gateLock) { gate.beginTeardown() }
+        synchronized(lock) { recovery.cancel(); stopCodec() }
+    }
+
+    fun releaseSessionSync() {
+        teardownRequested = true
+        synchronized(gateLock) { gate.beginTeardown() }
+        synchronized(lock) {
+            recovery.cancel()
+            stopCodec()
+            pipeline.release()
+            _resetStats()
+        }
+    }
 
     private fun _resetStats() {
         fps = 0; bitrateBps = 0; frameCount = 0; codecName = ""
@@ -150,43 +196,51 @@ class VideoRenderer(ctx: Context) {
     }
 
     fun feedFrame(data: ByteArray, ntpTimeNs: Long, isH265: Boolean) {
+        if (teardownRequested) return
+        val direct = synchronized(gateLock) { gate.offer(data, ntpTimeNs, isH265) }
+        if (!direct) return
         synchronized(lock) {
-            _updateStats(data.size)
-            if (videoWidth == 0 || videoHeight == 0) return
+            if (teardownRequested) return
+            _feedFrameLocked(data, ntpTimeNs, isH265)
+        }
+    }
 
-            if (recovery.pending && isH265 != currentH265) recovery.cancel()
-            if (recovery.pending) {
-                recovery.append(PendingFrame(data, ntpTimeNs, isH265), data.size)
+    private fun _feedFrameLocked(data: ByteArray, ntpTimeNs: Long, isH265: Boolean) {
+        _updateStats(data.size)
+        if (videoWidth == 0 || videoHeight == 0) return
+
+        if (recovery.pending && isH265 != currentH265) recovery.cancel()
+        if (recovery.pending) {
+            recovery.append(PendingFrame(data, ntpTimeNs, isH265), data.size)
+            return
+        }
+        if (codec == null || isH265 != currentH265) {
+            // a stale reference frame decodes to corruption, so wait for a keyframe to (re)start
+            if (!_isKeyframe(data, isH265)) {
+                if (codec != null) stopCodec()
                 return
             }
-            if (codec == null || isH265 != currentH265) {
-                // a stale reference frame decodes to corruption, so wait for a keyframe to (re)start
-                if (!_isKeyframe(data, isH265)) {
-                    if (codec != null) stopCodec()
+            stopCodec()
+        }
+
+        try {
+            if (codec == null) {
+                try {
+                    startCodec(isH265)
+                    check(codec != null) { "video surface unavailable" }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Video startup failed; retrying after resource release", e)
+                    stopCodec()
+                    stageCallback?.invoke("video.decoder.retry-scheduled")
+                    recovery.begin(PendingFrame(data, ntpTimeNs, isH265), data.size)
                     return
                 }
-                stopCodec()
             }
-
-            try {
-                if (codec == null) {
-                    try {
-                        startCodec(isH265)
-                        check(codec != null) { "video surface unavailable" }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Video startup failed; retrying after resource release", e)
-                        stopCodec()
-                        stageCallback?.invoke("video.decoder.retry-scheduled")
-                        recovery.begin(PendingFrame(data, ntpTimeNs, isH265), data.size)
-                        return
-                    }
-                }
-                _feedToCodec(data, ntpTimeNs)
-                drainOutput()
-            } catch (e: Exception) {
-                Log.w(TAG, "Codec error, resetting", e)
-                stopCodec()
-            }
+            _feedToCodec(data, ntpTimeNs)
+            drainOutput()
+        } catch (e: Exception) {
+            Log.w(TAG, "Codec error, resetting", e)
+            stopCodec()
         }
     }
 
@@ -195,6 +249,7 @@ class VideoRenderer(ctx: Context) {
         // dropping a frame desyncs decoder until the next keyframe, but source would only send one on (re)connect
         val retries = if (firstFrameQueued) FEED_RETRIES else FIRST_FEED_RETRIES
         repeat(retries) {
+            if (teardownRequested) return false
             val idx = c.dequeueInputBuffer(FEED_WAIT_US)
             if (idx >= 0) {
                 val buf = c.getInputBuffer(idx)
@@ -245,6 +300,8 @@ class VideoRenderer(ctx: Context) {
         val mime = if (h265) DecoderSelector.HEVC else DecoderSelector.AVC
 
         firstFrameQueued = false
+        firstOutputEmitted = false
+        stageCallback?.invoke("codec.init")
         try {
             val info = (if (h265) hevcDecoder else avcDecoder) ?: error("no decoder selected for $mime")
             _startWithLadder(info, mime, s, h265)
@@ -300,9 +357,11 @@ class VideoRenderer(ctx: Context) {
         }
         codec = c
         codecName = (if (h265) "H.265" else "H.264") + " (${c.name})"
+        stageCallback?.invoke("codec.start")
     }
 
     private fun stopCodec() {
+        firstOutputEmitted = false
         _frameIntervalIdx = 0
         _frameIntervalCount = 0
         _lastOutputFrameNs = 0L
@@ -323,6 +382,10 @@ class VideoRenderer(ctx: Context) {
             val idx = c.dequeueOutputBuffer(info, 0)
             if (idx == MediaCodec.INFO_TRY_AGAIN_LATER) break
             if (idx < 0) continue // INFO_OUTPUT_FORMAT_CHANGED / INFO_OUTPUT_BUFFERS_CHANGED
+            if (!firstOutputEmitted) {
+                firstOutputEmitted = true
+                stageCallback?.invoke("codec.first_frame")
+            }
             _recordOutputFrameTime()
             if (scheduledOutputBufferRelease && info.presentationTimeUs > 0L) {
                 // schedule frame at VSYNC matching its NTP presentation time; re-anchor on clock jumps/drift
@@ -341,12 +404,7 @@ class VideoRenderer(ctx: Context) {
         }
     }
 
-    fun release() = synchronized(lock) {
-        recovery.cancel()
-        stopCodec()
-        pipeline.release()
-        _resetStats()
-    }
+    fun release() = releaseSessionSync()
 
     private fun _recordOutputFrameTime() {
         val now = System.nanoTime()

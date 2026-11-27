@@ -6,6 +6,7 @@ import android.view.SurfaceView
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
@@ -18,7 +19,8 @@ fun VideoSurfaceView(
     aspectRatio: Float = 16f / 9f,
     // false = caller sizes the surface (content-scale modes)
     applyAspectRatio: Boolean = true,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSurfaceView: ((SurfaceView?) -> Unit)? = null,
 ) {
     val callbacks = remember {
         object : SurfaceHolder.Callback {
@@ -34,10 +36,15 @@ fun VideoSurfaceView(
         }
     }
 
+    DisposableEffect(onSurfaceView) {
+        onDispose { onSurfaceView?.invoke(null) }
+    }
+
     AndroidView(
         factory = { ctx ->
             SurfaceView(ctx).also {
                 it.holder.addCallback(callbacks)
+                onSurfaceView?.invoke(it)
             }
         },
         modifier = if (applyAspectRatio) {

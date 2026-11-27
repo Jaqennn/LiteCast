@@ -12,6 +12,8 @@ import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.content.res.Configuration
 import android.graphics.BitmapFactory
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Binder
 import android.os.Build
@@ -65,7 +67,10 @@ import io.github.litecast.dlna.DlnaRenderer
 import io.github.litecast.dlna.MediaProbe
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.HttpDataSource
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import java.net.NetworkInterface
 import java.security.SecureRandom
 import kotlin.math.abs
@@ -194,9 +199,53 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
             !_videoPollSuppressed &&
             SystemClock.elapsedRealtime() - _lastVideoPollAt < VIDEO_POLL_PENDING_TIMEOUT_MS
 
-    // set once mirroring reports a real size; stops with session
+    // set once mirroring starts; stops with session or foreground exit
     private val _mirroringActive = MutableStateFlow(false)
     val mirroringActive = _mirroringActive.asStateFlow()
+
+    // Dedicated worker for potentially blocking MediaCodec / Oboe start & release calls
+    private val _hardwareExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "LiteCast-Hw").apply { isDaemon = true }
+    }
+    private val _audioFocusLock = Object()
+    private var _audioFocusHeld = false
+    private var _audioFocusRequest: Any? = null
+    private val _mirrorSessionGen = AtomicLong(0L)
+    @Volatile private var _mirrorSessionActive = false
+    @Volatile private var _mirrorGateOpened = false
+    @Volatile private var _pendingMirrorAudio: Pair<Int, Int>? = null
+    private var _playerResumed = false
+    private var _playerSurfaceReady = false
+    private var _playerWindowFocused = false
+    private var _mirrorGateScheduledGen = -1L
+    private val _mirrorGateRunnable = Runnable { _openMirrorHardwareGate() }
+
+    private val _audioFocusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        // Only tear down on permanent loss; transient focus dips (e.g. system chimes) must not kill casts.
+        if (focusChange != AudioManager.AUDIOFOCUS_LOSS) return@OnAudioFocusChangeListener
+        _trace("audio.focus.lost")
+        _mainHandler.post {
+            synchronized(_audioFocusLock) {
+                _audioFocusHeld = false
+                _audioFocusRequest = null
+            }
+            when {
+                _mirroringActive.value || _mirrorSessionActive || _videoPlaybackActive.value -> {
+                    releaseVisualSessionSync(RELEASE_TIMEOUT_MS)
+                }
+                _audioOnly.value -> {
+                    _hardwareExecutor.execute {
+                        _trace("audio.output.stop.begin")
+                        audioRenderer.stop()
+                        _trace("audio.output.stop.done")
+                        _trace("mirror.disconnect")
+                        disconnectClients()
+                    }
+                    _setPlaying(false)
+                }
+            }
+        }
+    }
 
     private val _trackInfo = MutableStateFlow(TrackInfo())
     val trackInfo = _trackInfo.asStateFlow()
@@ -251,6 +300,172 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
     private fun log(msg: String) {
         Log.i(TAG, msg)
         logCallback?.invoke(msg)
+    }
+
+    private fun _trace(stage: String) {
+        runCatching { NativeBridge.nativeTraceStage(stage) }
+    }
+
+    private fun requestMediaAudioFocus(contentType: Int) = synchronized(_audioFocusLock) {
+        _trace("audio.focus.request")
+        val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val attrs = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(contentType)
+                .build()
+            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(attrs)
+                .setOnAudioFocusChangeListener(_audioFocusListener, _mainHandler)
+                .build()
+            _audioFocusRequest = req
+            audioManager.requestAudioFocus(req)
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.requestAudioFocus(
+                _audioFocusListener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN,
+            )
+        }
+        _audioFocusHeld = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        _trace(if (_audioFocusHeld) "audio.focus.granted" else "audio.focus.denied")
+    }
+
+    private fun abandonMediaAudioFocus() = synchronized(_audioFocusLock) {
+        if (!_audioFocusHeld && _audioFocusRequest == null) return@synchronized
+        _trace("audio.focus.abandon")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            (_audioFocusRequest as? AudioFocusRequest)?.let { audioManager.abandonAudioFocusRequest(it) }
+            _audioFocusRequest = null
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.abandonAudioFocus(_audioFocusListener)
+        }
+        _audioFocusHeld = false
+    }
+
+    fun onPlayerResumed() {
+        _playerResumed = true
+        _trace("player.resume")
+        _maybeArmMirrorGate()
+    }
+
+    fun onPlayerSurfaceReady() {
+        val wasReady = _playerSurfaceReady
+        _playerSurfaceReady = true
+        if (!wasReady) _trace("surface.ready")
+        _maybeArmMirrorGate()
+    }
+
+    fun onPlayerSurfaceDestroyed() {
+        _playerSurfaceReady = false
+        if (!_mirrorGateOpened) _cancelPendingMirrorGate()
+    }
+
+    fun onPlayerWindowFocusChanged(hasFocus: Boolean) {
+        val wasFocused = _playerWindowFocused
+        _playerWindowFocused = hasFocus
+        if (hasFocus) {
+            if (!wasFocused) _trace("focus.gained")
+            _maybeArmMirrorGate()
+        } else if (!_mirrorGateOpened) {
+            _cancelPendingMirrorGate()
+        }
+    }
+
+    private fun _maybeArmMirrorGate() {
+        if (!_mirrorSessionActive || !_mirroringActive.value || _mirrorGateOpened) return
+        if (!_playerResumed || !_playerSurfaceReady || !_playerWindowFocused) return
+        val gen = _mirrorSessionGen.get()
+        if (_mirrorGateScheduledGen == gen) return
+        _mirrorGateScheduledGen = gen
+        _mainHandler.removeCallbacks(_mirrorGateRunnable)
+        _trace("mirror.gate.wait")
+        _mainHandler.postDelayed(_mirrorGateRunnable, MIRROR_GATE_DELAY_MS)
+    }
+
+    private fun _cancelPendingMirrorGate() {
+        _mainHandler.removeCallbacks(_mirrorGateRunnable)
+        _mirrorGateScheduledGen = -1L
+    }
+
+    private fun _openMirrorHardwareGate() {
+        if (!_mirrorSessionActive || !_mirroringActive.value || _mirrorGateOpened) return
+        if (!_playerResumed || !_playerSurfaceReady || !_playerWindowFocused) return
+        val gen = _mirrorSessionGen.get()
+        _mirrorGateOpened = true
+        _mirrorGateScheduledGen = -1L
+        _trace("mirror.gate.open")
+        val pendingAudio = _pendingMirrorAudio
+        _hardwareExecutor.execute {
+            if (_mirrorSessionGen.get() != gen || !_mirrorGateOpened) return@execute
+            if (pendingAudio != null) {
+                audioRenderer.start()
+                audioRenderer.setFormat(pendingAudio.first, pendingAudio.second)
+            }
+            videoRenderer.openGateAndFlush()
+        }
+    }
+
+    /**
+     * Synchronously releases active visual cast hardware (MIRROR or VIDEO) when leaving
+     * PlayerActivity (e.g. switching TV input to HDMI). Potentially blocking MediaCodec/Oboe
+     * calls run on [_hardwareExecutor] with a hard [timeoutMs] wait on the caller thread.
+     */
+    fun releaseVisualSessionSync(timeoutMs: Long = RELEASE_TIMEOUT_MS) {
+        val hadVideo = _videoPlaybackActive.value
+        val hadMirror = _mirroringActive.value || _mirrorSessionActive
+        if (!hadVideo && !hadMirror) return
+
+        _trace("player.pause.release.begin")
+        _cancelPendingMirrorGate()
+        _playerResumed = false
+        _playerSurfaceReady = false
+        _playerWindowFocused = false
+
+        if (hadVideo) {
+            _endVideoPlaybackSync("Video stopped: player left foreground")
+        }
+
+        if (!hadMirror) {
+            _trace("player.pause.release.done")
+            return
+        }
+
+        val gen = _mirrorSessionGen.incrementAndGet()
+        _mirrorSessionActive = false
+        _mirrorGateOpened = false
+        _pendingMirrorAudio = null
+        _mirroringActive.value = false
+        _audioOnly.value = false
+        mediaSession?.isActive = false
+        videoRenderer.beginTeardown()
+
+        val latch = CountDownLatch(1)
+        _hardwareExecutor.execute {
+            try {
+                _trace("codec.release.begin")
+                videoRenderer.releaseSessionSync()
+                _trace("codec.release.done")
+                _trace("audio.output.stop.begin")
+                audioRenderer.stop()
+                _trace("audio.output.stop.done")
+                abandonMediaAudioFocus()
+                _trace("mirror.disconnect")
+                if (_mirrorSessionGen.get() == gen) {
+                    disconnectClients()
+                }
+            } finally {
+                latch.countDown()
+            }
+        }
+        val completed = try {
+            latch.await(timeoutMs, TimeUnit.MILLISECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
+        _trace(if (completed) "player.pause.release.done" else "player.pause.release.timeout")
     }
 
     override fun onLog(msg: String) {
@@ -573,7 +788,7 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
         videoRenderer.enforceSdr = prefs[Prefs.ENFORCE_SDR]
         videoRenderer.keyAllowFrameDrop = prefs[Prefs.KEY_ALLOW_FRAME_DROP]
         videoRenderer.selector.maxOperatingRate = Prefs.forced(prefs[Prefs.OPERATING_RATE])
-        videoRenderer.stageCallback = { NativeBridge.nativeTraceStage(it) }
+        videoRenderer.stageCallback = { _trace(it) }
         videoRenderer.recoveryFailedCallback = {
             _mainHandler.post {
                 if (_mirroringActive.value) android.widget.Toast.makeText(this,
@@ -706,6 +921,14 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
     private fun _shutdown() {
         _stopDlna()
         _serverPort.value = 0
+        _cancelPendingMirrorGate()
+        _mirrorSessionGen.incrementAndGet()
+        _mirrorSessionActive = false
+        _mirrorGateOpened = false
+        _pendingMirrorAudio = null
+        _playerResumed = false
+        _playerSurfaceReady = false
+        _playerWindowFocused = false
         audioRenderer.detachEngine()
         if (nativeHandle != 0L) {
             NativeBridge.nativeStop(nativeHandle)
@@ -720,6 +943,7 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
         wakeLock?.takeIf { it.isHeld }?.release()
         wakeLock = null
         videoRenderer.release()
+        abandonMediaAudioFocus()
         _mainHandler.removeCallbacks(_dlnaFailEnd)
         _mainHandler.removeCallbacks(_airplayFailEnd)
         _mainHandler.removeCallbacks(_slowStart)
@@ -804,7 +1028,30 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
         _mainHandler.removeCallbacks(_airplayFailEnd)
         _mainHandler.removeCallbacks(_slowStart)
         airPlayVideoPlayer.stop()
-        if (!_audioOnly.value) mediaSession?.isActive = false
+        if (!_audioOnly.value && !_mirroringActive.value) {
+            mediaSession?.isActive = false
+            abandonMediaAudioFocus()
+        }
+        log(message)
+    }
+
+    private fun _endVideoPlaybackSync(message: String) {
+        if (!_videoPlaybackActive.value) return
+        _videoPollSuppressed = true
+        _videoPlaybackActive.value = false
+        if (_videoSource.value == VideoSource.DLNA) _releaseDlnaSession()
+        _videoSource.value = VideoSource.AIRPLAY
+        _videoError.value = null
+        _mainHandler.removeCallbacks(_dlnaFailEnd)
+        _mainHandler.removeCallbacks(_airplayFailEnd)
+        _mainHandler.removeCallbacks(_slowStart)
+        _trace("codec.release.begin")
+        airPlayVideoPlayer.stopSync()
+        _trace("codec.release.done")
+        if (!_audioOnly.value && !_mirroringActive.value) {
+            mediaSession?.isActive = false
+            abandonMediaAudioFocus()
+        }
         log(message)
     }
 
@@ -812,6 +1059,7 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
         // LiteCast (as in sony-airplay-tv): a system-initiated destroy must not persist "receiver off"
         _shutdown()
         _dlnaProbe.shutdownNow()
+        _hardwareExecutor.shutdownNow()
         dacpPlayer.release()
         mediaReceiver?.let {
             try { unregisterReceiver(it) } catch (_: Exception) {}
@@ -857,6 +1105,7 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
         _videoTitle.value = ""
         _videoPlaybackActive.value = true
         _armSlowStart()
+        requestMediaAudioFocus(AudioAttributes.CONTENT_TYPE_MOVIE)
         airPlayVideoPlayer.play(location, startPositionSeconds)
         launchVisualSession()
         // claim media-button routing for keys that arrive as media-session events
@@ -888,31 +1137,43 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
 
     override fun onAudioFormat(ct: Int, spf: Int, usingScreen: Boolean) {
         clearPin()
-        if (!usingScreen) {
-            _mainHandler.post {
-                if (_videoPlaybackActive.value) _endVideoPlayback("Video stopped: AirPlay audio started")
+        if (usingScreen) {
+            if (!_mirrorSessionActive) return
+            _pendingMirrorAudio = ct to spf
+            val gen = _mirrorSessionGen.get()
+            if (_mirrorGateOpened) {
+                _hardwareExecutor.execute {
+                    if (_mirrorSessionGen.get() != gen || !_mirrorGateOpened) return@execute
+                    audioRenderer.start()
+                    audioRenderer.setFormat(ct, spf)
+                }
             }
+            log("Audio format: ct=$ct spf=$spf screen=true (gated=${!_mirrorGateOpened})")
+            return
+        }
+        _mainHandler.post {
+            if (_videoPlaybackActive.value) _endVideoPlayback("Video stopped: AirPlay audio started")
+            requestMediaAudioFocus(AudioAttributes.CONTENT_TYPE_MUSIC)
         }
         audioRenderer.start()
         audioRenderer.setFormat(ct, spf)
-        if (!usingScreen) _setPlaying(true)
-        if (!usingScreen && !_audioOnly.value) {
+        _setPlaying(true)
+        if (!_audioOnly.value) {
             // pure music streaming (not screen mirroring audio)
             _setAudioOnly(true)
             // LiteCast: show the now-playing card on the TV
             launchVisualSession()
         }
-        log("Audio format: ct=$ct spf=$spf screen=$usingScreen")
+        log("Audio format: ct=$ct spf=$spf screen=false")
     }
 
     override fun onVideoSize(srcW: Float, srcH: Float, w: Float, h: Float) {
+        if (!_mirrorSessionActive) return
         clearPin()
         if (w > 0 && h > 0) {
             _videoAspect.value = w / h
             _videoResolution.value = "${w.toInt()}x${h.toInt()}"
             videoRenderer.setResolution(w.toInt(), h.toInt())
-            if (!_mirroringActive.value) launchVisualSession()
-            _mirroringActive.value = true
         }
         log("Video size: ${srcW}x${srcH} -> ${w}x${h}")
     }
@@ -1031,7 +1292,20 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
                 if (!_videoPlaybackActive.value) mediaSession?.isActive = false
             }
             // last client gone: release audio output devices to save power
+            if (_mirrorSessionActive) {
+                _mirrorSessionActive = false
+                _mirrorSessionGen.incrementAndGet()
+                _mirrorGateOpened = false
+                _pendingMirrorAudio = null
+                _mirroringActive.value = false
+                videoRenderer.beginTeardown()
+                _hardwareExecutor.execute { videoRenderer.stopSession() }
+            }
             audioRenderer.stop()
+            _mainHandler.post {
+                _cancelPendingMirrorGate()
+                if (!_videoPlaybackActive.value && !_mirroringActive.value) abandonMediaAudioFocus()
+            }
             _audioOnly.value = false
             _lastVideoPollAt = 0
             _videoPollSuppressed = false
@@ -1111,17 +1385,35 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
 
     override fun onMirrorRunning(running: Boolean) {
         if (running) {
-            // LiteCast: newest cast wins over a DLNA video, and the player pops up
-            if (_videoPlaybackActive.value) {
-                _mainHandler.post { _endVideoPlayback("Video stopped: mirroring started") }
+            val gen = _mirrorSessionGen.incrementAndGet()
+            _mirrorSessionActive = true
+            _mirrorGateOpened = false
+            _pendingMirrorAudio = null
+            _trace("mirror.session.start")
+            // Arm the frame gate immediately on the native thread without starting MediaCodec or Oboe.
+            videoRenderer.armSessionGate()
+            _setAudioOnly(false)
+            _mainHandler.post {
+                if (_mirrorSessionGen.get() != gen || !_mirrorSessionActive) return@post
+                // LiteCast: newest cast wins over a DLNA video, and the player pops up
+                if (_videoPlaybackActive.value) _endVideoPlayback("Video stopped: mirroring started")
+                _mirroringActive.value = true
+                requestMediaAudioFocus(AudioAttributes.CONTENT_TYPE_MOVIE)
+                _trace("player.launch")
+                launchVisualSession()
+                _maybeArmMirrorGate()
             }
-            videoRenderer.startSession()
-            launchVisualSession()
         } else {
-            videoRenderer.stopSession()
+            _mirrorSessionActive = false
+            _mirrorSessionGen.incrementAndGet()
+            _mirrorGateOpened = false
+            _pendingMirrorAudio = null
+            _mainHandler.post { _cancelPendingMirrorGate() }
+            videoRenderer.beginTeardown()
+            _hardwareExecutor.execute { videoRenderer.stopSession() }
             _mirroringActive.value = false
+            if (_connectionCount.value > 0) _setAudioOnly(true) else _setAudioOnly(false)
         }
-        _setAudioOnly(!running)
     }
 
     private fun _setAudioOnly(audioOnly: Boolean) {
@@ -1369,6 +1661,7 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
         _videoTitle.value = title
         _videoPlaybackActive.value = true
         _armSlowStart()
+        requestMediaAudioFocus(AudioAttributes.CONTENT_TYPE_MOVIE)
         airPlayVideoPlayer.play(uri, 0f, _dlnaOptions(autoPlay))
         launchVisualSession()
         mediaSession?.isActive = true
@@ -1691,6 +1984,8 @@ open class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener
 
         private const val AUDIO_CONFIG_DEBOUNCE_MS = 500L
         private const val SERVER_RESTART_DEBOUNCE_MS = 500L
+        private const val MIRROR_GATE_DELAY_MS = 500L
+        private const val RELEASE_TIMEOUT_MS = 500L
 
         // airplay volume is linear in dB along sender slider
         private fun _dbToFrac(db: Float) = if (db <= -144f) 0f else ((db + 30f) / 30f).coerceIn(0f, 1f)

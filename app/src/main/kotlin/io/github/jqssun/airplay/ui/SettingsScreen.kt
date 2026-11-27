@@ -1,11 +1,12 @@
 package io.github.jqssun.airplay.ui
 
-import android.content.ActivityNotFoundException
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
@@ -447,13 +448,25 @@ private fun canAutoLaunch(ctx: Context): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || Settings.canDrawOverlays(ctx)
 
 // overlay settings screen may not exist on some builds
+@SuppressLint("QueryPermissionsNeeded")
 private fun _openOverlaySettings(ctx: Context) {
-    val overlay = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))
-    try {
-        ctx.startActivity(overlay.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    } catch (_: ActivityNotFoundException) {
-        ctx.startActivity(ctx.appSettingsIntent().addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    val candidates = listOf(
+        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}")),
+        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION),
+        ctx.appSettingsIntent(),
+        Intent(Settings.ACTION_SETTINGS),
+    )
+    val pm = ctx.packageManager
+    for (intent in candidates) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (intent.resolveActivity(pm) == null) continue
+        if (runCatching { ctx.startActivity(intent) }.isSuccess) return
     }
+    Toast.makeText(
+        ctx,
+        ctx.getString(R.string.lc_overlay_open_failed, ctx.packageName),
+        Toast.LENGTH_LONG,
+    ).show()
 }
 
 @Composable

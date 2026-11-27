@@ -74,7 +74,7 @@ struct AudioEngine {
 
     bool start() {
         std::lock_guard<std::mutex> lk(mRebuildLock);
-        mRunning = true;
+        mRunning.store(true, std::memory_order_release);
         if (mOutput && !mOutputActive) {
             mTimeline->flushAndReprime();
             mOutputActive = mOutput->start();
@@ -83,12 +83,16 @@ struct AudioEngine {
     }
 
     void pause() {
+        // Flip mRunning first so incoming audio packets drop immediately during teardown
+        mRunning.store(false, std::memory_order_release);
+        std::lock_guard<std::mutex> decodeLock(mDecodeLock);
+        mDecoder = {}; // release HW/SW audio decoder before yielding audio hardware
         std::lock_guard<std::mutex> lk(mRebuildLock);
-        mRunning = false;
         if (mOutput && mOutputActive) {
             mOutput->stop();
             mOutputActive = false;
         }
+        if (mTimeline) mTimeline->requestFlush();
     }
 
     void flush() {
@@ -104,6 +108,7 @@ struct AudioEngine {
 
     // No concurrent callbacks are allowed during destroy.
     void stop() {
+        mRunning.store(false, std::memory_order_release);
         std::lock_guard<std::mutex> decodeLock(mDecodeLock);
         if (mOutput) mOutput->stop();
         mOutputActive = false;
@@ -140,8 +145,11 @@ struct AudioEngine {
 
     // touches decoder: must not run concurrently with stop()
     void decode(const uint8_t *data, size_t len, int ct, int64_t ptsNs) {
+        // Drop packets safely while output is paused or gated (prevents premature decoder
+        // creation and queue buildup during HDMI -> AirPlay handoff buffer).
+        if (!mRunning.load(std::memory_order_acquire)) return;
         std::lock_guard<std::mutex> decodeLock(mDecodeLock);
-        if (!mTimeline) return;
+        if (!mTimeline || !mRunning.load(std::memory_order_acquire)) return;
         if (mPending.load(std::memory_order_relaxed)) {
             if (AudioConfig *raw = mPending.exchange(nullptr, std::memory_order_acquire)) {
                 std::unique_ptr<AudioConfig> c(raw);
@@ -150,7 +158,7 @@ struct AudioEngine {
                 if (mOutputActive) mOutput->stop();
                 mOutput.reset();
                 initInternals(*c);
-                mOutputActive = mRunning ? mOutput->start() : false;
+                mOutputActive = mRunning.load(std::memory_order_acquire) ? mOutput->start() : false;
             }
         }
 
@@ -221,7 +229,7 @@ private:
     unsigned mPackets = 0;
     std::shared_ptr<TimelineBuffer> mTimeline; // guarded by mRebuildLock
     std::shared_ptr<AudioOutput> mOutput;      // guarded by mRebuildLock
-    bool mRunning = false;                     // requested output state, guarded by mRebuildLock
+    std::atomic<bool> mRunning{false};         // requested output state; atomic for fast drop in decode()
     bool mOutputActive = false;                // actual output state, guarded by mRebuildLock
     float mClientGain = 1.0f;                  // last-set sender gain, guarded by mRebuildLock
 

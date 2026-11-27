@@ -24,6 +24,18 @@
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
+    <queries>
+        <intent>
+            <action android:name="android.settings.action.MANAGE_OVERLAY_PERMISSION" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.APPLICATION_DETAILS_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.SETTINGS" />
+        </intent>
+    </queries>
+
     <application
         android:name=".AirPlayApp"
         android:allowBackup="false"
